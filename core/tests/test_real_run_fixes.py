@@ -221,7 +221,7 @@ def test_the_clock_only_touches_a_worktree_of_this_repo_under_repo_worktrees(mak
 
 
 @pytest.mark.parametrize("setting, make, reason", [
-    ("", None, "require_clone_marker is set"),  # on by default: no setting needed
+    ("", None, "is not the factory's clone"),  # on by default: no setting needed
     ('forbidden_paths = ["data/live.db"]', "data/live.db", "forbidden path data/live.db exists"),
 ])
 def test_folder_guards_stop_everything_and_the_clone_marker_is_required_by_default(clock_repo, setting, make, reason):

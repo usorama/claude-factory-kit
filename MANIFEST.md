@@ -1,4 +1,4 @@
-# Manifest (1.2.3)
+# Manifest (1.2.4)
 
 `<project>` paths show where `factory init` puts a file in a work repo.
 

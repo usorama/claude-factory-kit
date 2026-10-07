@@ -122,15 +122,18 @@ def roles_problem(cfg, root=None):
 
 
 CLONE_MARKER = ".factory-clone"
+CLONE_HOWTO = ("If this folder is a clone used only by the factory, mark it: factory init --apply --factory-clone "
+               "(it writes .factory-clone). If you work in this folder yourself, make a separate clone for the factory "
+               "(git clone <your origin> <new folder>) and set it up there with factory init --apply --factory-clone.")
 
 
 def folder_problem(cfg, root):
-    """Optional guards on the folder the factory runs in (both off by default):
-    require_clone_marker = true: run only where a .factory-clone file exists, so the factory never runs in the folder
+    """Guards on the folder the factory runs in:
+    require_clone_marker (on by default): run only where a .factory-clone file exists, so the factory never runs in the folder
     a person works in; forbidden_paths = [...]: files that must not exist here (a real database, a credentials file)."""
     root = Path(root)
     if cfg.get("require_clone_marker") and not (root / CLONE_MARKER).is_file():
-        return f"require_clone_marker is set and {root / CLONE_MARKER} is missing: this is not the factory's clone"
+        return f"{root / CLONE_MARKER} is missing: this is not the factory's clone. {CLONE_HOWTO}"
     for name in cfg.get("forbidden_paths") or []:
         if (root / name).exists():
             return f"forbidden path {name} exists in {root}: nothing runs here"

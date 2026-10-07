@@ -25,6 +25,9 @@ def clock_repo(tmp_path, landing='landing = "direct"\n', origin=None):
     shutil.copy2(KIT / "install-clock.sh", repo / "factory/install-clock.sh")
     (repo / "factory/tick.sh").write_text(STUB_TICK)
     (repo / "factory/consistency.py").write_text("")
+    shutil.copy2(KIT / "common.py", repo / "factory/common.py")
+    shutil.copytree(KIT / "presets", repo / "factory/presets")
+    (repo / ".factory-clone").write_text("")
     (repo / "factory.toml").write_text(landing + '[roles.builder]\ntool = "claude"\n')
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     if origin:
@@ -78,3 +81,11 @@ def test_gh_is_required_only_when_units_land_through_pull_requests(tmp_path):
     repo, env = clock_repo(tmp_path, landing="", origin="git@github.com:someone/thing.git")
     done = install(repo, env)
     assert done.returncode != 0 and "gh is not signed in" in done.stderr and "pr_merge" in done.stderr
+
+
+def test_the_installer_says_how_to_mark_the_factory_clone_before_anything_else(tmp_path):
+    repo, env = clock_repo(tmp_path)
+    (repo / ".factory-clone").unlink()
+    done = install(repo, env)
+    assert done.returncode != 0 and "factory init --apply --factory-clone" in done.stderr
+    assert not Path(env["FAKE_CRON_STORE"]).exists()

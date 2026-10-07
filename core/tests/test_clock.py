@@ -160,3 +160,5 @@ def test_the_dry_run_lands_both_units_end_to_end(tmp_path, args):
                             capture_output=True, text=True, timeout=600)
     assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-2000:]
     assert "DRY RUN PASSED" in result.stdout
+    # it follows SETUP-CHECKLIST items 8 and 9: a separate factory clone, marked by init, with the marker required
+    assert '"clone_marker_required": true' in result.stdout and '"clone_marker_present": true' in result.stdout

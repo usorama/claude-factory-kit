@@ -221,6 +221,9 @@ def apply(project, overwrite=(), preset="claude-only", adapter="claude-code", pr
     if caches:
         done.append(f"WARNING: the repo tracks {len(caches)} Python cache file(s), for example {caches[0]}. Remove them once: "
                     "git rm -r --cached $(git ls-files '*.pyc' '*/__pycache__/*') and commit; .gitignore now ignores them.")
+    cfg = common.config(project)
+    if cfg["require_clone_marker"] and not (project / common.CLONE_MARKER).is_file():
+        done.append(f"next: the clock, the chief and the crew will not run here yet. {common.CLONE_HOWTO}")
     pin = project / "factory/toolchain.json"
     if not pin.exists():
         seen = json.loads(subprocess.run([sys.executable, "factory/fingerprint.py"], cwd=project,

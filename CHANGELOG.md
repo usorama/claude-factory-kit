@@ -1,8 +1,20 @@
 # Changelog
 
-Newest first. 1.2.3 makes the kit safe to run on a work repo: model-written code runs fenced, only a person changes
-the factory's rules, setup changes no team file, and commits carry the person's own name. Each item has a test and a
-sabotage; `FIXES.md` lists them item by item.
+Newest first. 1.2.4 fixes the setup path for the clone marker. 1.2.3 makes the kit safe to run on a work repo.
+Model-written code runs fenced, and only a person changes the factory's rules. Setup changes no team file, and
+commits carry the person's own name. Each item has a test and a
+sabotage, listed item by item in `FIXES.md`.
+
+## 1.2.4 - 2026-10-07
+
+- [Quality] A setup that follows the docs never meets the clone-marker refusal. The init command asks whether the
+  folder is the factory's own clone, and marks it. Without the mark, init ends with a "next:" line. The
+  refusal in the clock, the chief and the clock installer names the same step. 1.2.3 turned the marker on by default
+  but left the documented path and the real smoke test without it.
+- The dry run and the real smoke test now follow the documented setup: a team repo on its origin, then a separate
+  clone that only the factory uses, set up with `factory init --apply --factory-clone`.
+- The real smoke test ran on 2026-10-07 and cost $0.60. Builder: claude-haiku-4-5. Reviewer and plan coverage
+  auditor: claude-sonnet-5-5. It landed one unit with the fenced builder path and no tool denials.
 
 ## 1.2.3 - 2026-10-07
 

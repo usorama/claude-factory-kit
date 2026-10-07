@@ -31,11 +31,12 @@ Each has a **check**; do not go on until the check gives the result shown.
 8. **Green suite and a remote.** Check: `python3 -m pytest -q` passes and `git remote get-url origin` prints your repo.
 9. **A clone for the factory, and init with the model probe.** The clock runs only in a folder marked as the
    factory's own, never in the checkout you work in: `git clone <your repo> ~/factory-<repo>` and work there for
-   the rest of this list. Run `/factory-init` with `--factory-clone` (or
-   `factory init --apply --factory-clone --preset <p> --adapter <a>`). It makes one tiny call per candidate model of
+   the rest of this list. In that clone run `/factory-init` and answer yes when it asks whether this folder is the
+   factory's own clone (or run `factory init --apply --factory-clone --preset <p> --adapter <a>`). Either way it
+   writes the `.factory-clone` marker. It makes one tiny call per candidate model of
    each installed tool, writes `factory.toml`, and shows each role's model and why. The setup is personal: no file
    your team tracks changes. `--footprint shared` writes the team files instead, only if your team agreed.
-   Check: `python3 factory/tick.py status` runs; `factory.toml` names only exact model IDs; if the reviewer shares the
+   Check: `ls .factory-clone` finds the file; `python3 factory/tick.py status` runs; `factory.toml` names only exact model IDs; if the reviewer shares the
    builder's model, the line says "fresh session only (weaker)".
 10. **Toolchain pin.** Check: `python3 factory/fingerprint.py --check factory/toolchain.json; echo $?` prints `0`.
 11. **State file.** Fill the Position block of `state.md` with the real time (`date -u +"%Y-%m-%d %H:%M"`).

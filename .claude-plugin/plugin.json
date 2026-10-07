@@ -1,6 +1,6 @@
 {
   "name": "factory",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Clock-driven software factory: failing tests first, a builder and a different reviewer, deterministic gates, lessons that improve the rules. Claude Code adapter of a tool-neutral core.",
   "author": {
     "name": "Umasankr Udhya"

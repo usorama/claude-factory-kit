@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """End-to-end dry run with deterministic fake tools (sample/fakes): no network, no model calls.
 
-Makes a tiny repo with a bare 'origin', installs the factory with `factory init` in the default personal setup
+Follows the documented setup (SETUP-CHECKLIST.md, items 8 and 9): a team repo with a bare 'origin', then a separate
+clone used only by the factory, set up there with `factory init --apply --factory-clone` in the default personal setup
 (nothing tracked changes; the run checks that no factory file reaches the origin) and the model probe
 runs against the fake claude and codex, which know only $FACTORY_FAKE_MODELS), runs the crew's before-cut
 check, cuts two units of row W1 (unit 2 on top of unit 1, and without a brief, so Quill writes it),
@@ -64,10 +65,19 @@ def main(folder, preset, landing, models, github=None):
         env.update(GIT_AUTHOR_NAME="dry-run", GIT_AUTHOR_EMAIL="dry-run@localhost",
                    GIT_COMMITTER_NAME="dry-run", GIT_COMMITTER_EMAIL="dry-run@localhost")
         sh("git", "init", "-q", "--bare", "-b", "main", str(origin), cwd=top)
-    shutil.copytree(SAMPLE / "seed", repo)
-    sh("git", "init", "-q", "-b", "main", cwd=repo)
-    sh("git", "add", "-A", cwd=repo, env=env)  # a real project already has history before init
-    sh("git", "commit", "-q", "-m", "seed", cwd=repo, env=env)
+    team = top / "team"  # the repo as the team has it, pushed to its origin
+    shutil.copytree(SAMPLE / "seed", team)
+    sh("git", "init", "-q", "-b", "main", cwd=team)
+    sh("git", "add", "-A", cwd=team, env=env)  # a real project already has history before init
+    sh("git", "commit", "-q", "-m", "seed", cwd=team, env=env)
+    sh("git", "remote", "add", "origin", str(origin), cwd=team)
+    if github:  # reset the test repo: main is the seed, no other branch
+        for line in sh("git", "ls-remote", "--heads", "origin", cwd=team, env=env).splitlines():
+            name = line.split("refs/heads/", 1)[1]
+            if name != "main":
+                sh("git", "push", "-q", "origin", "--delete", name, cwd=team, env=env)
+    sh("git", "push", "-q", "-u", *(["--force"] if github else []), "origin", "main", cwd=team, env=env)
+    sh("git", "clone", "-q", str(origin), str(repo), cwd=top, env=env)  # the factory's own clone (item 9)
     factory = [sys.executable, str(CORE / "cli.py")]
     init = json.loads(sh(*factory, "init", "--apply", "--factory-clone", "--project", str(repo), "--preset", preset,
                          "--adapter", ADAPTER[preset], cwd=repo, env=env))
@@ -82,6 +92,7 @@ def main(folder, preset, landing, models, github=None):
                 role.update(command=[str(SAMPLE / "fakes/claude"), "--model", "{model}"], output="claude-json")
         data["roles"]["reviewer"]["fresh_session"] = True
         toml = tomlw.dumps(data, "Generic preset, filled in by hand.")
+    toml = re.sub(r'(?m)^(landing|lanes) = .*\n', "", toml)  # init may have written the GitHub choice already
     (repo / "factory.toml").write_text(f"lanes = 4\nlanding = \"{landing}\"\n" + toml)
     sh(*factory, "approve", "--yes", "--project", str(repo), cwd=repo, env=env)  # the person approves their own edit
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
@@ -89,13 +100,7 @@ def main(folder, preset, landing, models, github=None):
     shutil.copy(SAMPLE / "seed/plan/backlog.md", repo / "plan/backlog.md")
     sh("git", "add", "-A", cwd=repo, env=env)
     sh("git", "commit", "-q", "--allow-empty", "-m", "factory set up (personal: nothing tracked changed)", cwd=repo, env=env)
-    sh("git", "remote", "add", "origin", str(origin), cwd=repo)
-    if github:  # reset the test repo: main is the seed, no other branch
-        for line in sh("git", "ls-remote", "--heads", "origin", cwd=repo, env=env).splitlines():
-            name = line.split("refs/heads/", 1)[1]
-            if name != "main":
-                sh("git", "push", "-q", "origin", "--delete", name, cwd=repo, env=env)
-    sh("git", "push", "-q", "-u", *(["--force"] if github else []), "origin", "main", cwd=repo, env=env)
+    sh("git", "push", "-q", "origin", "main", cwd=repo, env=env)
 
     tick = [sys.executable, "factory/tick.py"]
     sh(*factory, "crew", "before-cut", "W1", "--project", str(repo), cwd=repo, env=env)
@@ -140,6 +145,10 @@ def main(folder, preset, landing, models, github=None):
     units = json.loads((repo / "var/factory/queue.json").read_text())["units"]
     summary = {
         "folder": str(top), "preset": preset, "landing": landing, "origin": str(origin),
+        "clone_marker_required": json.loads(sh(sys.executable, "-c", "import json, common; "
+                                               "print(json.dumps(common.config('..')['require_clone_marker']))",
+                                               cwd=repo / "factory", env=env)),
+        "clone_marker_present": (repo / ".factory-clone").is_file(),
         "pull_requests": sorted({u["pr"] for u in units if u.get("pr")}),
         "roles": [line for line in init if line.startswith("role ")],
         "ticks": [h["states"] for h in history],
@@ -154,7 +163,7 @@ def main(folder, preset, landing, models, github=None):
         "independence": data["sections"]["now"]["review_independence"]["text"],
     }
     print(json.dumps(summary, indent=1))
-    ok = (summary["landed"] and summary["row_closed"] and suite.returncode == 0 and summary["sabotage_undone"]
+    ok = (summary["clone_marker_required"] and summary["clone_marker_present"] and summary["landed"] and summary["row_closed"] and suite.returncode == 0 and summary["sabotage_undone"]
           and summary["factory_files_landed"] == [] and crew_ran == EXPECTED_CREW and not summary["findings"]
           and summary["attempts_used"] == 0)
     print("DRY RUN PASSED" if ok else "DRY RUN FAILED")

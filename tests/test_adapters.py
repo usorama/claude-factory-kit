@@ -110,6 +110,23 @@ def test_a_shared_setup_writes_the_team_files_only_when_asked_and_a_personal_one
     assert (team / "factory/tick.py").read_text() == "# the team's own file\n"
 
 
+def test_a_setup_without_the_clone_flag_says_exactly_how_to_mark_the_clone_and_that_step_works(tmp_path):
+    root = project(tmp_path)
+    git(root, "config", "user.name", "Test Person")
+    git(root, "config", "user.email", "person@example.invalid")
+    init = [sys.executable, str(REPO / "core/cli.py"), "init", "--apply", "--project", str(root)]
+    first = subprocess.run(init, env=fake_env(), capture_output=True, text=True)
+    assert first.returncode == 0, first.stderr
+    assert "factory init --apply --factory-clone" in next(l for l in json.loads(first.stdout) if l.startswith("next:"))
+    tick = subprocess.run([sys.executable, "factory/tick.py", "tick"], cwd=root, capture_output=True, text=True)
+    assert "factory init --apply --factory-clone" in tick.stdout + tick.stderr  # the refusal names the same step
+    again = subprocess.run([*init, "--factory-clone"], env=fake_env(), capture_output=True, text=True)
+    assert again.returncode == 0 and (root / ".factory-clone").is_file()
+    assert not any(l.startswith("next:") for l in json.loads(again.stdout))
+    tick = subprocess.run([sys.executable, "factory/tick.py", "tick"], cwd=root, capture_output=True, text=True)
+    assert "factory's clone" not in tick.stdout + tick.stderr
+
+
 def test_a_shared_setup_never_puts_its_hook_in_a_team_hooks_folder(tmp_path):
     root = project(tmp_path)
     git(root, "config", "core.hooksPath", ".husky/_")
@@ -161,7 +178,7 @@ def test_the_generic_cli_drives_the_core(tmp_path):
     assert result.returncode == 0, result.stderr
     assert subprocess.run([str(tool), "tick", "--project", str(root)], capture_output=True).returncode == 0
     ticks = (root / "var/factory/ticks.log").read_text()
-    assert "require_clone_marker is set" in ticks  # not the factory's own clone: nothing runs
+    assert "is not the factory's clone" in ticks  # not the factory's own clone: nothing runs
     (root / ".factory-clone").write_text("")
     subprocess.run([str(tool), "tick", "--project", str(root)], capture_output=True)
     ticks = (root / "var/factory/ticks.log").read_text()

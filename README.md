@@ -52,20 +52,23 @@ keep repos under `~/`, not `/mnt/c`.
 claude plugin marketplace add usorama/claude-factory-kit      # or a local clone: claude plugin marketplace add ~/claude-factory-kit
 claude plugin install factory@factory-kit
 ```
-Then, inside your repo, run `/factory-init`. It probes which models this machine can use (one tiny call per
+Then make a clone of your repo that only the factory uses (`git clone <your origin> ~/factory-<repo>`), open Claude
+Code in it, and run `/factory-init`. It asks whether this folder is the factory's own clone and marks it
+(`.factory-clone`); the clock never runs anywhere else. It probes which models this machine can use (one tiny call per
 candidate model), shows the roles it chose and why, and asks before overwriting anything. Then `/factory-install-clock`.
 
 Setup is personal unless you ask otherwise. Init hides every factory file through `.git/info/exclude`, a file that
 never leaves your machine. It writes `.claude/settings.local.json` and `CLAUDE.local.md`, never the team's
 `.claude/settings.json` or `CLAUDE.md`, and refuses to change a file the team tracks. `--footprint shared` writes the
-team files, for a team that agreed to it. The clock runs only in a folder marked as the factory's own clone: give
-init `--factory-clone` in a separate clone, not in the checkout you work in.
+team files, for a team that agreed to it. Without `--factory-clone`, init ends with a line starting "next:" that says how to mark
+the folder, and the clock installer refuses with the same words.
 
-**Codex:** `git clone <kit>`, `bash adapters/codex/install.sh`, then in your repo
-`python3 <kit>/core/cli.py init --apply --preset codex-only --adapter codex` (or `claude-codex`), then `factory clock`.
+**Codex:** `git clone <kit>`, `bash adapters/codex/install.sh`, then in a clone of your repo used only by the factory
+`python3 <kit>/core/cli.py init --apply --factory-clone --preset codex-only --adapter codex` (or `claude-codex`), then
+`factory clock`.
 
-**Any harness or by hand:** put `<kit>/adapters/generic/bin` on your `PATH`, then `factory init --apply --preset generic
---adapter generic`, fill the commands and models in `factory.toml`, then `factory clock`.
+**Any harness or by hand:** put `<kit>/adapters/generic/bin` on your `PATH`, then, in the factory's own clone,
+`factory init --apply --factory-clone --preset generic --adapter generic`, fill the commands and models in `factory.toml`, then `factory clock`.
 
 Updating: `/plugin update` (or `git pull` in the kit) does not reach a project's `factory/` copy. Every tick and the
 consistency check warn while the project is behind. `factory init --apply --update` refreshes it in one command and

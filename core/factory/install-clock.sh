@@ -9,6 +9,9 @@ fail() { echo "NOT READY: $1" >&2; exit 1; }
 
 case "$REPO" in /mnt/*) fail "the repo is under /mnt; move it into your Linux home folder" ;; esac
 [ -f "$HOME/.factory-env.sh" ] && . "$HOME/.factory-env.sh"
+# The clock runs only in the factory's own clone: say how to mark it before checking anything else.
+FOLDER_PROBLEM="$(cd "$REPO/factory" && python3 -c 'import sys, common; print(common.folder_problem(common.config(sys.argv[1]), sys.argv[1]) or "")' "$REPO")"
+[ -z "$FOLDER_PROBLEM" ] || fail "$FOLDER_PROBLEM"
 ROLE_TOOLS="$(python3 -c 'import sys, tomllib; r = tomllib.load(open(sys.argv[1], "rb")).get("roles", {}); print(" ".join(sorted({v["tool"] for v in r.values() if v.get("tool") in ("claude", "codex")})))' "$REPO/factory.toml")"
 # gh is needed only when units land through pull requests: landing is not "direct", and either factory.toml names
 # a pull request mode or the origin is on GitHub (where pr_merge is the default).

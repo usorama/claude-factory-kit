@@ -30,6 +30,27 @@ time or money).
     landing, in the tick's own time. The guard now copies once, and the time limit stops a hanging run. Running the
     suite once, in the background, is not built.
 
+## 1.2.4: the clone marker on the documented setup path
+
+**T1 [Quality]: with the marker on by default (1.2.3), the real smoke test failed in 9 seconds, before any model
+call: "work/.factory-clone is missing". A first-time user who followed the docs would have hit the same refusal.**
+The coordinator found it on a clean clone. What was done: `/factory-init` asks whether the folder is the factory's
+own clone and passes `--factory-clone`. Init without it ends with a "next:" line that gives the exact command. The
+refusal in the tick, the chief and the clock installer carries the same words. The readme, the setup checklist (item 9) and
+the init command describe one path: clone the repo for the factory, then init there. The dry run and the smoke test
+follow that path. Tests: `tests/test_adapters.py::test_a_setup_without_the_clone_flag_says_exactly_how_to_mark_the_clone_and_that_step_works`;
+`core/tests/test_clock.py::test_the_dry_run_lands_both_units_end_to_end`, which now asserts the marker is required
+and present; and `test_clock_install.py::test_the_installer_says_how_to_mark_the_factory_clone_before_anything_else`.
+Sabotages that turned them red: the "next:" line removed; the dry run without `--factory-clone`.
+
+**T2 [Quality]: the real smoke test, run for real.** `FACTORY_REAL_SMOKE=1 python3 -m pytest -q tests/test_real_smoke.py -s`
+passed on 2026-10-07 in 167 seconds and spent $0.60. The builder was claude-haiku-4-5. The reviewer (Inspector
+Grumble) and the plan coverage auditor were claude-sonnet-5-5. Sweeper Sid and Sorter Sam used claude-haiku-4-5.
+The fenced builder path worked with a real model: the builder ran 15 turns with no tool denial. It reported the named
+tests and the full suite passing. Its only allowed way to run tests was `factory/run_tests.py`. The other allowed
+commands are git reads, `ls`, `cp` and `mkdir`. The evidence is indirect: no denial, plus test results that only the
+wrapper could produce. The builder's own tool calls are not recorded.
+
 ## 1.2.3: the second review, a licence, safe updates and a restart switch
 
 A second review of 1.2.1 asked what else could hurt a person who runs the kit on a work repo. Every high and medium
