@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# The factory CLI for any harness or a person: factory init | tick | clock | dashboard | retro | crew | probe | roles | promote-lesson
+KIT="$(cd "$(dirname "$(readlink -f "$0")")/../../.." && pwd -P)"
+exec python3 "$KIT/core/cli.py" "$@"

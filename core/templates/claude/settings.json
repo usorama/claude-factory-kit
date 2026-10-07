@@ -1,0 +1,64 @@
+{
+  "env": {
+    "DISABLE_AUTOUPDATER": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(python3 factory/tick.py *)",
+      "Bash(python3 factory/asks.py *)",
+      "Bash(python3 factory/lessons.py *)",
+      "Bash(python3 factory/consistency.py *)",
+      "Bash(python3 factory/consistency.py)",
+      "Bash(python3 factory/metrics.py)",
+      "Bash(python3 factory/daily_report.py *)",
+      "Bash(python3 factory/staleness_gate.py *)",
+      "Bash(python3 factory/unit_check.py *)",
+      "Bash(python3 factory/red_check.py *)",
+      "Bash(python3 factory/brief_check.py *)",
+      "Bash(python3 factory/fingerprint.py *)",
+      "Bash(python3 -m pytest *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git fetch *)",
+      "Bash(git pull --ff-only *)",
+      "Bash(git worktree list *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(date *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr create *)",
+      "Bash(curl *)",
+      "WebFetch"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/secrets/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(rm -rf *)",
+      "Edit(./var/**)",
+      "Write(./var/**)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "network": {
+      "allowedDomains": [
+        "github.com",
+        "api.github.com",
+        "pypi.org",
+        "files.pythonhosted.org"
+      ]
+    }
+  }
+}

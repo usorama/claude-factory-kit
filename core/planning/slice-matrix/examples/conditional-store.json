@@ -1,0 +1,37 @@
+{
+  "source": {
+    "description": "Try store A first. Try store B only when A fails or is explicitly not selected. Verify the selected store through the same user path.",
+    "outcomes": [{"id": "O1", "text": "Users can save and retrieve a note.", "requirements": ["REQ1"], "first_proof": "S3"}],
+    "requirements": ["REQ1"],
+    "features": ["Save and retrieve a note using the selected store"]
+  },
+  "engines": [],
+  "slices": [
+    {
+      "id": "S1", "title": "Try store A",
+      "behavior": "A note saved through store A survives reopening.",
+      "layers_touched": ["interface", "storage"],
+      "acceptance": [{"type": "yes_no", "check": "Store A returns the saved note after reopening.", "observable": "Save a note, reopen it, and compare its text."}],
+      "blocked_by": [], "size": "S", "est_hours": 2,
+      "covers": ["REQ1"], "outcomes": ["O1"], "engines": {}
+    },
+    {
+      "id": "S2", "title": "Try fallback store B",
+      "behavior": "A note saved through store B survives reopening.",
+      "layers_touched": ["interface", "storage"],
+      "acceptance": [{"type": "yes_no", "check": "Store B returns the saved note after reopening.", "observable": "Save a note, reopen it, and compare its text."}],
+      "blocked_by": [], "runs_if": {"failed": ["S1"]},
+      "size": "S", "est_hours": 2,
+      "covers": ["REQ1"], "outcomes": ["O1"], "engines": {}
+    },
+    {
+      "id": "S3", "title": "Verify the selected store",
+      "behavior": "Users save and retrieve notes through the selected store.",
+      "layers_touched": ["interface", "storage"],
+      "acceptance": [{"type": "yes_no", "check": "The selected store preserves the user's note across a restart.", "observable": "Save a note, restart the application, and retrieve the same text."}],
+      "blocked_by": [], "blocked_by_any": [["S1"], ["S2"]],
+      "size": "S", "est_hours": 1,
+      "covers": ["REQ1"], "outcomes": ["O1"], "engines": {}
+    }
+  ]
+}

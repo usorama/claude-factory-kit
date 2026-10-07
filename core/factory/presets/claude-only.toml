@@ -1,0 +1,60 @@
+# Preset claude-only (the zero-config default): Claude only. A Sonnet builds; Opus reviews when this machine has it, else another Sonnet version.
+# Role requirements, not model names: `factory init` probes the exact models this machine can use
+# and writes them into the project's factory.toml with a fixed rule (see core/probe.py).
+preset = "claude-only"
+
+[roles.chief-of-staff]
+tool = "claude"
+tier = "strong"
+prefer = ["opus", "fable", "sonnet"]
+effort = "high"
+prompt = ".ai/prompts/chief-of-staff.v1.md"
+form = "position"
+check = "consistency"
+tools = ["Read", "Edit", "Write", "Glob", "Grep", "Bash"]
+
+[roles.builder]
+tool = "claude"
+tier = "strong"
+prefer = ["sonnet", "opus", "fable"]
+effort = "medium"
+prompt = ".ai/prompts/builder.v1.md"
+form = "diff"
+check = "build_check"
+output = "claude-json"
+tools = ["Read", "Edit", "Write", "Glob", "Grep", "Bash(git diff *)", "Bash(git status *)", "Bash(ls *)", "Bash(git log *)", "Bash(git show *)", "Bash(cp *)", "Bash(mkdir *)", "Bash(python3 -m pytest *)", "Bash(python3 -B -m pytest *)", "Bash(pytest *)"]
+command = ["claude", "-p", "--model", "{model}", "--effort", "{effort}", "--output-format", "json", "--no-session-persistence", "--permission-mode", "dontAsk", "--settings", "{no_network}", "--max-turns", "{max_turns}", "--max-budget-usd", "{max_budget}", "--allowedTools", "{tools}", "--disallowedTools", "{deny}"]
+deny = ["Bash(git push *)", "Bash(git commit *)", "Bash(git reset *)", "Bash(curl *)", "Bash(wget *)", "WebFetch", "WebSearch"]
+
+[roles.reviewer]
+tool = "claude"
+tier = "strong"
+prefer = ["opus", "fable", "sonnet"]
+effort = "high"
+prompt = ".ai/prompts/inspector-grumble.v1.md"
+form = "review-json"
+check = "review_form"
+output = "claude-json"
+tools = ["Read", "Edit", "Write", "Glob", "Grep", "Bash(git diff *)", "Bash(git status *)", "Bash(ls *)", "Bash(git log *)", "Bash(git show *)", "Bash(cp *)", "Bash(mkdir *)", "Bash(python3 -m pytest *)", "Bash(python3 -B -m pytest *)", "Bash(pytest *)"]
+command = ["claude", "-p", "--model", "{model}", "--effort", "{effort}", "--output-format", "json", "--no-session-persistence", "--permission-mode", "dontAsk", "--settings", "{no_network}", "--max-turns", "{max_turns}", "--max-budget-usd", "{max_budget}", "--allowedTools", "{tools}", "--disallowedTools", "{deny}"]
+deny = ["Bash(git push *)", "Bash(git commit *)", "Bash(git reset *)", "Bash(curl *)", "Bash(wget *)", "WebFetch", "WebSearch"]
+
+[roles.researcher]
+tool = "claude"
+tier = "strong"
+prefer = ["opus", "fable", "sonnet"]
+effort = "high"
+prompt = ".ai/prompts/researcher.v1.md"
+form = "research-md"
+check = "research_check"
+tools = ["Read", "Glob", "Grep", "Bash", "WebFetch", "WebSearch", "Write"]
+
+[roles.summarizer]
+tool = "claude"
+tier = "fast"
+prefer = ["haiku", "sonnet"]
+effort = "low"
+prompt = ".ai/prompts/summarizer.v1.md"
+form = "summary-md"
+check = "summary_check"
+tools = ["Read"]

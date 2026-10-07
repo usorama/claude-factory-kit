@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "must_stop": true,
+  "properties": [
+    {
+      "id": "slice_count",
+      "type": "slice_count",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "id": "engine_count",
+      "type": "engine_count",
+      "min": 0,
+      "max": 0
+    }
+  ]
+}

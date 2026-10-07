@@ -1,0 +1,17 @@
+{
+ "row": "W1",
+ "n": 2,
+ "title": "Title-case a text",
+ "paragraph": "The text kit writes a text in title case: each word starts with a capital letter and the rest is lower case. Anything that is not text, and text that is only spaces, is refused with a clear message. Sabotage: remove the refusal of blank text; the blank-text test goes red.",
+ "tests": [
+  "tests/test_title.py::test_each_word_starts_with_a_capital",
+  "tests/test_title.py::test_non_text_is_refused",
+  "tests/test_title.py::test_blank_text_is_refused"
+ ],
+ "files": [
+  "textkit/title.py"
+ ],
+ "out_of_scope": "No rules for small words such as 'of' or 'the'.",
+ "estimate_minutes": 15,
+ "seam": "title_case(text)"
+}

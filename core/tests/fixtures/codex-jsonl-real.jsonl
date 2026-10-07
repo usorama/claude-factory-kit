@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"<removed>"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"ok"}}
+{"type":"turn.completed","usage":{"input_tokens":15003,"cached_input_tokens":12288,"cache_write_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0}}
+{"type":"_captured","note":"codex-cli 0.160.0, echo prompt | codex exec --ephemeral --json -s read-only --skip-git-repo-check -, Linux x86_64, 2026-10-07; thread id removed"}

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Installed as .git/hooks/pre-commit by install.sh: a staged state.md must carry the real clock time.
+exec python3 factory/consistency.py --staged

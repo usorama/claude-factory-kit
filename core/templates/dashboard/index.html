@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory Dashboard</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #5f5f5a; --line: #deded8;
+  --accent: #2f5fd0; --good: #1e7a3c; --warn: #9a6200; --bad: #b3261e; --chip: #ececE6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151514; --panel: #1f1f1d; --text: #ecece8; --muted: #a3a39c; --line: #34342f;
+    --accent: #8fb0ff; --good: #6fcf8e; --warn: #f0b85a; --bad: #ff8a80; --chip: #2a2a27;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151514; --panel: #1f1f1d; --text: #ecece8; --muted: #a3a39c; --line: #34342f;
+  --accent: #8fb0ff; --good: #6fcf8e; --warn: #f0b85a; --bad: #ff8a80; --chip: #2a2a27;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+header { padding: 16px 16px 4px; max-width: 960px; margin: 0 auto; }
+h1 { font-size: 20px; margin: 0; }
+.sub { color: var(--muted); font-size: 13px; }
+nav { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+      display: flex; gap: 4px; overflow-x: auto; padding: 8px 16px; scrollbar-width: none; }
+nav::-webkit-scrollbar { display: none; }
+nav button { flex: none; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+             border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+nav button[aria-selected="true"] { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+main { max-width: 960px; margin: 0 auto; padding: 12px 16px 48px; }
+.tab { display: none; } .tab.on { display: block; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 10px 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.grid .card { margin: 0; }
+.num { font-size: 22px; font-weight: 600; } .unit { color: var(--muted); font-size: 13px; }
+.explain { color: var(--muted); font-size: 13px; margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+.scroll { overflow-x: auto; }
+.chip { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--chip); font-size: 12px; }
+.good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+.loop { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; counter-reset: step; }
+.loop button { counter-increment: step; text-align: left; border: 1px solid var(--line); background: var(--panel);
+               color: var(--text); border-radius: 10px; padding: 10px; font: inherit; cursor: pointer; }
+.loop button::before { content: counter(step) ". "; font-weight: 600; color: var(--accent); }
+.loop small { display: block; color: var(--muted); }
+.steps { counter-reset: s; } .steps h3 { counter-increment: s; } .steps h3::before { content: counter(s) ". "; }
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text);
+         max-width: min(520px, calc(100vw - 32px)); }
+a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Factory dashboard</h1>
+  <div class="sub" id="asof">Loading data.</div>
+</header>
+<nav role="tablist">
+  <button role="tab" data-tab="now" aria-selected="true">Now</button>
+  <button role="tab" data-tab="daily">Daily report</button>
+  <button role="tab" data-tab="metrics">Factory metrics</button>
+  <button role="tab" data-tab="workflow">Workflow</button>
+  <button role="tab" data-tab="decisions">Decisions waiting</button>
+  <button role="tab" data-tab="lessons">Lessons</button>
+</nav>
+<main>
+  <div class="tab on" id="now"></div>
+  <div class="tab" id="daily"></div>
+  <div class="tab" id="metrics"></div>
+  <div class="tab" id="workflow">
+<section data-static data-title="Workflow" data-asof="2026-10-07"
+  data-sources="factory/drive.py factory/crew.py factory/crew.toml factory/unit_check.py factory/tick.sh factory/runners.py factory/red_check.py factory/build_check.py factory/review.py factory/land.py factory/tick.py">
+    <div class="card">
+      <p>One unit is a small piece of work: one behaviour, three to five failing tests, at most three code files.
+      A clock runs every five minutes and moves each unit one step. Tap a step.</p>
+      <div class="loop">
+        <button data-step="cut">Cut<small>Chief of staff sizes the unit and writes failing tests</small></button>
+        <button data-step="red">Red check<small>Program: tests fail for the right reason</small></button>
+        <button data-step="build">Build<small>Pinned builder model, fresh session</small></button>
+        <button data-step="check">Build check<small>Program: files, tests, guard, suite</small></button>
+        <button data-step="review">Review<small>A different model or a fresh session; never the builder report</small></button>
+        <button data-step="land">Landing<small>Program: catch up, merged suite, pull request, merge or watch</small></button>
+      </div>
+      <p class="explain">Way back: the first refusal of build check, review or landing sends the unit back to Build with the finding.
+      The second refusal stops it for a split. A stop card goes to the chief of staff, never to the human.</p>
+    </div>
+    <div class="steps card">
+      <h3 id="step-cut">Cut</h3>
+      <p>The chief of staff sizes the unit: one behaviour in a short paragraph with a named sabotage, three to five failing tests, at most three code files, a named seam and an estimate of at most two hours. Code refuses anything larger. Before the cut, Sweeper Sid checks the row is not already done and the plan coverage auditor checks nothing is dropped. The unit is queued from the live checkout. Without a brief, Quill writes one and code checks it.</p>
+      <h3 id="step-red">Red check</h3>
+      <p>Each named test must fail because the unit's code is missing, not because the test file is broken. Every other test must pass, except the tests of other units still in the queue, or stopped with an open card. A brief that cites a missing file or a runtime file is refused.</p>
+      <h3 id="step-build">Build</h3>
+      <p>The builder role runs with the exact model the install probe pinned. It gets the brief and the unit, may touch only the listed files, and may not change tests. Its time box is twice the estimate. The program commits the work. A rebuild starts again from the cut, with the finding; model time over twice the estimate sends the unit to a split.</p>
+      <h3 id="step-check">Build check</h3>
+      <p>Only listed files changed, test files are unchanged, the named tests pass, every new check is protected by a named test (the guard removes each one), and the whole suite passes.</p>
+      <h3 id="step-review">Review</h3>
+      <p>Inspector Grumble, the reviewer role, runs on a different model when one answered the probe, else in a fresh session with a different review prompt (shown as weaker). It runs the tests, the suite and the named sabotage, and writes a JSON form. Lockjaw joins on risky files and Thomasina on user-facing surfaces. Code decides the verdict: only a complete finding of a listed kind, inside the unit's files, blocks; every note becomes a backlog row.</p>
+      <h3 id="step-land">Landing</h3>
+      <p>The unit's own commits are replayed onto the newest main. The change must equal the reviewed change. The whole suite runs on the merged result. The pull request is opened. In direct mode the factory merges it by its exact head commit; in auto mode GitHub merges it once the branch rules are met; in pr-only mode people merge it. The clock watches an open pull request until it is merged. Landings go one at a time.</p>
+      <h3 id="step-crew">The crew and stops</h3>
+      <p>Every crew agent starts only on its trigger in the crew file, with the model of the role it uses; its answer is a form that code accepts or refuses, and it earns cookies or slaps on the Factory metrics tab. One unit is stopped with hold, which ends its process at once, and returns only through release after its re-cut validates. A row is marked done by code after the conformance and claim checks.</p>
+      <h3 id="step-machinery">When the machinery fails</h3>
+      <p>A model error, a denied tool, a failed fetch or a failed GitHub call is never the unit's fault and uses no attempt. A usage limit pauses every build and review until it resets; the daily budget does the same and asks the human. Retries are capped, then the unit stops with a card.</p>
+    </div>
+</section>
+  </div>
+  <div class="tab" id="decisions"></div>
+  <div class="tab" id="lessons"></div>
+</main>
+<dialog id="pop"><p id="pop-text"></p><p><a id="pop-link" href="#">Read the full step</a></p>
+  <form method="dialog"><button>Close</button></form></dialog>
+<script id="factory-data" type="application/json">null</script>
+<script>
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const ago = iso => { if (!iso) return "never"; const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  return m < 1 ? "just now" : m < 120 ? m + " min ago" : Math.round(m / 60) + " h ago"; };
+const table = (heads, rows) => rows.length ? `<div class="scroll"><table><tr>${heads.map(h => `<th>${esc(h)}</th>`).join("")}</tr>${
+  rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</table></div>` : `<p class="explain">Nothing here.</p>`;
+const stamp = s => `<p class="explain">Computed ${esc(s.as_of)} (${ago(s.as_of)}) from ${s.sources.map(esc).join(", ")}.</p>`;
+
+function render(data) {
+  const S = data.sections;
+  document.getElementById("asof").textContent = `Data written ${data.generated_at} (${ago(data.generated_at)}).`;
+  const n = S.now, age = n.last_tick ? (Date.now() - Date.parse(n.last_tick)) / 60000 : Infinity;
+  const clock = age > n.clock_stale_minutes ? "bad" : "good";
+  const findings = S.consistency.findings;
+  document.getElementById("now").innerHTML = `
+    <div class="card"><b>Clock:</b> last tick <span class="${clock}">${ago(n.last_tick)}</span>
+      ${n.last_idle_reason ? `<div class="explain">Idle: ${esc(n.last_idle_reason)}</div>` : ""}
+      <div class="explain">Units moving: ${n.moving}. Lanes: ${n.lanes}.</div>
+      ${n.paused_until ? `<div class="warn">Model steps paused for a usage limit until ${esc(n.paused_until)}.</div>` : ""}</div>
+    <div class="card"><b>Roles</b> <span class="${n.review_independence.kind === "different-model" ? "good" : "warn"}">Review: ${esc(n.review_independence.text)}</span>
+      ${table(["Role", "Tool", "Model", "Effort", "Prompt", "Checked by"], n.roles.map(r => [esc(r.role), esc(r.tool), esc(r.model), esc(r.effort), esc(r.prompt), esc(r.check)]))}</div>
+    <div class="card"><b>Units in the clock</b>${table(["Unit", "State", "Step running", "Since", "Last outcome"],
+      n.units.map(u => [`${esc(u.unit)}<div class="explain">${esc(u.title)}</div>`, `<span class="chip">${esc(u.state)}</span>`, esc(u.step || "-"),
+        `${esc(u.since)}<div class="explain">${ago(u.since)}</div>`, esc(u.last_outcome)]))}</div>
+    <div class="card"><b>Records that disagree</b>${table(["What", "Fix"],
+      findings.map(f => [`<span class="bad">${esc(f.text)}</span>`, esc(f.fix)]))}</div>${stamp(n)}`;
+  document.getElementById("daily").innerHTML = S.daily.days.map(d => `<div class="card"><b>${esc(d.date)}</b>
+    <ul><li>Units landed: ${d.landed.length}${d.landed.map(u => `<div class="explain">${esc(u.unit)}: ${esc(u.minutes_to_land)} minutes from queue to landed</div>`).join("")}</li>
+    <li>Refusals: ${d.refusals.length}${d.refusals.map(r => `<div class="explain">${esc(r.unit)} at ${esc(r.step)}: ${esc(r.why)}</div>`).join("")}</li>
+    <li>Escaped defects: ${d.defects.length}${d.defects.map(x => `<div class="explain">${esc(x.unit)}: ${esc(x.note)}</div>`).join("")}</li>
+    <li>First-try green: ${esc(d.first_try_green)}</li><li>Sent to split: ${d.splits}</li>
+    <li>Hand corrections: ${d.hand.length}${d.hand.map(h => `<div class="explain">${esc(h.unit)}: ${esc(h.reason)}, ${esc(h.note)}</div>`).join("")}</li>
+    <li>Clock ticks: ${d.ticks}; idle by reason: ${esc(Object.entries(d.idle).map(([k, v]) => `${k} (${v})`).join(", ") || "none")}</li>
+    <li>Model cost recorded: ${d.cost_usd} US dollars</li><li>Lessons filed: ${esc(d.lessons.join("; ") || "none")}</li>
+    <li>Decisions asked: ${esc(d.decisions.join("; ") || "none")}</li></ul></div>`).join("") + stamp(S.daily);
+  const m = S.metrics;
+  document.getElementById("metrics").innerHTML = `<div class="grid">${m.numbers.map(x => `<div class="card">
+    <div class="unit">${esc(x.name)}</div><div class="num">${esc(x.value)}</div><div class="unit">${esc(x.unit)}</div>
+    <div class="explain">${esc(x.explain)}</div></div>`).join("")}</div>
+    <div class="card"><b>Median minutes per step</b>${table(["Step", "Minutes"], Object.entries(m.step_minutes_median).map(([k, v]) => [esc(k), esc(v)]))}</div>
+    <div class="card"><b>Hand corrections and why</b>${table(["When", "Unit", "Reason", "Note"], m.hand_corrections.map(h => [esc(h.at), esc(h.unit), esc(h.reason), esc(h.note)]))}</div>
+    <div class="card"><b>Crew</b> <span class="explain">each agent runs only on its trigger (factory/crew.toml); cookies and slaps are counted by code</span>
+      ${table(["Agent", "Triggers", "Runs", "Verdicts", "Cookies", "Slaps", "Last run"], m.crew.map(c => [esc(c.agent), esc(c.triggers.join(", ")), esc(c.runs),
+        esc(Object.entries(c.verdicts).map(([k, v]) => `${k} ${v}`).join(", ")), `<span class="good">${esc(c.cookies)}</span>`,
+        `<span class="${c.slaps ? "bad" : ""}">${esc(c.slaps)}</span>`, esc(c.last)]))}</div>
+    <div class="card"><b>Estimate against actual</b> <span class="explain">model minutes against the cut's estimate, per landed unit and per row</span>
+      ${table(["Unit", "Estimate (minutes)", "Model (minutes)", "Wall clock (minutes)", "Actual / estimate"], m.sizing.map(x => [esc(x.unit), esc(x.estimate), esc(x.model_minutes), esc(x.wall_minutes),
+        `<span class="${x.ratio > 2 ? "bad" : x.ratio > 1 ? "warn" : "good"}">${esc(x.ratio)}</span>`]))}
+      ${table(["Row", "Units", "Estimate (minutes)", "Model (minutes)"], m.sizing_rows.map(r => [esc(r.row), esc(r.units), esc(r.estimate), esc(r.model_minutes)]))}</div>
+    <div class="card"><b>Model receipts (newest first)</b>${table(["When", "Unit", "Role", "Model", "Effort", "Prompt", "Review independence", "Cost (US dollars)"],
+      m.receipts.map(r => [esc(r.at), esc(r.unit), esc(r.role), `${esc(r.tool)}:${esc(r.model)}`, esc(r.effort), `${esc(r.prompt)} ${esc(r.prompt_sha)}`,
+        r.independence ? `<span class="${r.independence === "different-model" ? "good" : "warn"}">${esc(r.independence)}</span>` : "", esc(r.cost_usd)]))}</div>
+    <div class="card"><b>Idle reasons</b>${table(["Reason", "Ticks"], Object.entries(m.idle_reasons).map(([k, v]) => [esc(k), esc(v)]))}</div>${stamp(m)}`;
+  document.getElementById("decisions").innerHTML = `<div class="card"><b>Decisions waiting for you</b>
+    <p class="explain">Only money, accounts or passwords, production, messages to real people, or a real product choice. Unit stops are handled by the orchestrator and never appear here.</p>
+    ${table(["Question", "Recommendation", "How to answer"], S.decisions.cards.map(c => [esc(c.title), esc(c.recommendation), esc(c.reply)]))}</div>${stamp(S.decisions)}`;
+  document.getElementById("lessons").innerHTML = `<div class="card">${table(["Lesson", "Shape", "Status", "Applied by"],
+    S.lessons.lessons.map(l => [`<b>${esc(l.title)}</b><div class="explain">${esc(l.lesson)}</div>`, esc(l.shape), esc(l.status), esc(l.applied_by)])
+  )}</div>${stamp(S.lessons)}`;
+}
+
+document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.id === b.dataset.tab));
+  try { localStorage.setItem("factory-tab", b.dataset.tab); } catch (e) {}
+}));
+try { const t = localStorage.getItem("factory-tab"); if (t) document.querySelector(`nav [data-tab="${t}"]`)?.click(); } catch (e) {}
+document.querySelectorAll(".loop button").forEach(b => b.addEventListener("click", () => {
+  const h = document.getElementById("step-" + b.dataset.step);
+  document.getElementById("pop-text").textContent = h.nextElementSibling.textContent;
+  const link = document.getElementById("pop-link");
+  link.onclick = e => { e.preventDefault(); document.getElementById("pop").close(); h.scrollIntoView({behavior: "smooth"}); };
+  document.getElementById("pop").showModal();
+}));
+const embedded = JSON.parse(document.getElementById("factory-data").textContent);
+if (embedded) render(embedded);
+else fetch("../var/factory/dashboard/data.json").then(r => r.json()).then(render)
+  .catch(() => { document.getElementById("asof").textContent = "No data. Run factory/metrics.py, then the staleness gate with --publish."; });
+</script>
+</body>
+</html>

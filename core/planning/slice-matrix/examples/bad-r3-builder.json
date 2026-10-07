@@ -1,0 +1,201 @@
+{
+  "source": {
+    "description": "Toy plan for a personal image gallery. Requirements REQ1 through REQ5 map in order to the feature list.",
+    "outcomes": [
+      {
+        "id": "O1",
+        "text": "Users retain their profile and cover images.",
+        "requirements": [
+          "REQ1",
+          "REQ2"
+        ],
+        "first_proof": "S1"
+      },
+      {
+        "id": "O2",
+        "text": "Users can manage and retrieve their gallery images.",
+        "requirements": [
+          "REQ3",
+          "REQ4",
+          "REQ5"
+        ],
+        "first_proof": "S3"
+      }
+    ],
+    "requirements": [
+      "REQ1",
+      "REQ2",
+      "REQ3",
+      "REQ4",
+      "REQ5"
+    ],
+    "features": [
+      "Upload a profile photo",
+      "Upload a cover image",
+      "Delete an image",
+      "Browse a gallery",
+      "Download an image"
+    ]
+  },
+  "engines": [
+    {
+      "id": "E1",
+      "title": "Shared image storage"
+    }
+  ],
+  "slices": [
+    {
+      "id": "S1",
+      "title": "Upload a profile photo",
+      "behavior": "A saved profile photo is visible after reloading.",
+      "layers_touched": [
+        "interface",
+        "service",
+        "storage"
+      ],
+      "acceptance": [
+        {
+          "check": "A saved profile photo is visible after reloading.",
+          "type": "yes_no",
+          "observable": "Upload a photo, reload the profile, and see the same photo."
+        }
+      ],
+      "blocked_by": [],
+      "size": "S",
+      "est_hours": 2,
+      "covers": [
+        "REQ1"
+      ],
+      "engines": {
+        "E1": "builds"
+      },
+      "outcomes": [
+        "O1"
+      ]
+    },
+    {
+      "id": "S2",
+      "title": "Upload a cover image",
+      "behavior": "A saved cover image is visible after reloading.",
+      "layers_touched": [
+        "interface",
+        "service",
+        "storage"
+      ],
+      "acceptance": [
+        {
+          "check": "A saved cover image is visible after reloading.",
+          "type": "yes_no",
+          "observable": "Upload a cover, reload the page, and see the same cover."
+        }
+      ],
+      "blocked_by": [],
+      "size": "S",
+      "est_hours": 2,
+      "covers": [
+        "REQ2"
+      ],
+      "engines": {
+        "E1": "uses"
+      },
+      "outcomes": [
+        "O1"
+      ]
+    },
+    {
+      "id": "S3",
+      "title": "Delete an image",
+      "behavior": "A deleted image no longer appears after reloading.",
+      "layers_touched": [
+        "interface",
+        "service",
+        "storage"
+      ],
+      "acceptance": [
+        {
+          "check": "A deleted image no longer appears after reloading.",
+          "type": "yes_no",
+          "observable": "Delete an image, reload, and confirm it is absent."
+        }
+      ],
+      "blocked_by": [
+        "S1"
+      ],
+      "size": "S",
+      "est_hours": 2,
+      "covers": [
+        "REQ3"
+      ],
+      "engines": {
+        "E1": "uses"
+      },
+      "outcomes": [
+        "O2"
+      ]
+    },
+    {
+      "id": "S4",
+      "title": "Browse a gallery",
+      "behavior": "The gallery displays saved profile and cover images.",
+      "layers_touched": [
+        "interface",
+        "service",
+        "storage"
+      ],
+      "acceptance": [
+        {
+          "check": "The gallery displays saved profile and cover images.",
+          "type": "yes_no",
+          "observable": "Open the gallery after both uploads and see both images."
+        }
+      ],
+      "blocked_by": [
+        "S1",
+        "S2"
+      ],
+      "size": "S",
+      "est_hours": 2,
+      "covers": [
+        "REQ4"
+      ],
+      "engines": {
+        "E1": "uses"
+      },
+      "outcomes": [
+        "O2"
+      ]
+    },
+    {
+      "id": "S5",
+      "title": "Download an image",
+      "behavior": "The gallery download returns the original image bytes.",
+      "layers_touched": [
+        "interface",
+        "service",
+        "storage"
+      ],
+      "acceptance": [
+        {
+          "check": "The gallery download returns the original image bytes.",
+          "type": "yes_no",
+          "observable": "Download from the gallery and compare the bytes with the uploaded file."
+        }
+      ],
+      "blocked_by": [
+        "S1",
+        "S4"
+      ],
+      "size": "S",
+      "est_hours": 2,
+      "covers": [
+        "REQ5"
+      ],
+      "engines": {
+        "E1": "uses"
+      },
+      "outcomes": [
+        "O2"
+      ]
+    }
+  ]
+}

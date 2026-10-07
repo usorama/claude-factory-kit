@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "must_stop": false,
+  "properties": [
+    {
+      "id": "slice_count",
+      "type": "slice_count",
+      "min": 2,
+      "max": 2
+    },
+    {
+      "id": "covers",
+      "type": "covers",
+      "ids": [
+        "R1",
+        "R2"
+      ]
+    },
+    {
+      "id": "first_unblocked",
+      "type": "first_unblocked"
+    },
+    {
+      "id": "first_vertical",
+      "type": "first_vertical"
+    },
+    {
+      "id": "max_hours",
+      "type": "max_hours",
+      "value": 8
+    },
+    {
+      "id": "acyclic",
+      "type": "acyclic"
+    },
+    {
+      "id": "engine_count",
+      "type": "engine_count",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "id": "first_covers",
+      "type": "first_covers",
+      "ids": [
+        "R1"
+      ]
+    },
+    {
+      "id": "layers",
+      "type": "layers",
+      "groups": [
+        [
+          "practice"
+        ],
+        [
+          "feedback"
+        ]
+      ]
+    },
+    {
+      "id": "forbidden_layer",
+      "type": "forbidden_layer",
+      "aliases": [
+        "database",
+        "API",
+        "UI"
+      ]
+    }
+  ]
+}

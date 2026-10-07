@@ -1,0 +1,176 @@
+# The crew: who runs, on which trigger, with which requirement, and which code check accepts the answer.
+# Code reads this file (factory/crew.py). No session chooses a crew agent or a model: an agent runs only
+# when its trigger fires, with the exact model pinned for the role it uses in factory.toml.
+# Each agent is read-only unless `writes` names its one file. Its memory is crew/<name>/memory.md in the
+# project; code appends the agent's memory_line there.
+
+[commands]
+claude = ["claude", "-p", "--model", "{model}", "--effort", "{effort}", "--output-format", "json", "--no-session-persistence",
+          "--permission-mode", "dontAsk", "--settings", "{no_network}", "--max-turns", "40", "--max-budget-usd", "{max_budget}",
+          "--allowedTools", "{tools}", "--disallowedTools", "Bash(git push *)", "Bash(git commit *)", "Edit", "WebFetch", "WebSearch"]
+codex = ["codex", "exec", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "-s", "{tools}", "--ephemeral", "--json", "-"]
+
+[rules]
+risk_classes = ["auth", "money", "deletion", "permissions", "migration", "personal-data", "secrets"]
+risk_paths = ["*auth*", "*login*", "*password*", "*secret*", "*token*", "*credential*", "*payment*", "*billing*",
+              "*invoice*", "*delete*", "*erase*", "*permission*", "*role*", "*migration*", "*consent*", "*personal*", "*pii*"]
+surface_paths = ["*.html", "*.tsx", "*.jsx", "*.vue", "*.svelte", "web/*", "ui/*", "app/*", "pages/*", "templates/*",
+                 "api/*", "*/api/*", "routes/*", "*route*", "*view*", "*endpoint*"]
+
+[agents.sorter-sam]
+uses_role = "builder"
+effort = "medium"
+prompt = ".ai/prompts/crew/sorter-sam.v1.md"
+form = "triage"
+tools = ["Read", "Grep", "Glob", "Bash(git log *)", "Bash(git show *)", "Bash(ls *)"]
+sandbox = "read-only"
+
+[agents.sweeper-sid]
+uses_role = "builder"
+effort = "high"
+prompt = ".ai/prompts/crew/sweeper-sid.v1.md"
+form = "sweep"
+tools = ["Read", "Grep", "Glob", "Bash(git log *)", "Bash(git show *)", "Bash(python3 -m pytest *)", "Bash(ls *)"]
+sandbox = "read-only"
+
+[agents.plan-coverage-auditor]
+uses_role = "reviewer"
+effort = "high"
+prompt = ".ai/prompts/crew/plan-coverage-auditor.v1.md"
+form = "coverage"
+tools = ["Read", "Grep", "Glob", "Bash(ls *)"]
+sandbox = "read-only"
+
+[agents.quill]
+uses_role = "builder"
+effort = "high"
+prompt = ".ai/prompts/crew/quill.v1.md"
+form = "brief"
+tools = ["Read", "Grep", "Glob", "Bash(ls *)", "Bash(git log *)", "Write(.ai/specs/*)"]
+sandbox = "workspace-write"
+writes = ".ai/specs/<unit>.md"
+
+[agents.inspector-grumble]
+uses_role = "reviewer"
+effort = "high"
+prompt = ".ai/prompts/inspector-grumble.v1.md"
+form = "review"
+tools = []
+sandbox = "workspace-write"
+note = "Runs as the reviewer role itself (factory.toml roles.reviewer); its form is the review form."
+
+[agents.lockjaw]
+uses_role = "reviewer"
+effort = "high"
+prompt = ".ai/prompts/crew/lockjaw.v1.md"
+form = "review"
+tools = ["Read", "Grep", "Glob", "Bash(python3 *)", "Bash(git diff *)", "Bash(cp *)", "Bash(mkdir *)", "Write(.factory-crew-*)"]
+sandbox = "workspace-write"
+
+[agents.thomasina]
+uses_role = "reviewer"
+effort = "high"
+prompt = ".ai/prompts/crew/thomasina.v1.md"
+form = "review"
+tools = ["Read", "Grep", "Glob", "Bash(python3 *)", "Bash(curl http://localhost*)", "Bash(curl http://127.0.0.1*)", "Write(.factory-crew-*)"]
+sandbox = "workspace-write"
+
+[agents.spec-conformance-auditor]
+uses_role = "reviewer"
+effort = "high"
+prompt = ".ai/prompts/crew/spec-conformance-auditor.v1.md"
+form = "conformance"
+tools = ["Read", "Grep", "Glob", "Bash(python3 *)", "Bash(git log *)", "Write(.factory-crew-*)"]
+sandbox = "read-only"
+
+[agents.claim-verifier]
+uses_role = "reviewer"
+effort = "high"
+prompt = ".ai/prompts/crew/claim-verifier.v1.md"
+form = "claims"
+tools = ["Read", "Grep", "Glob", "Bash(python3 -m pytest *)", "Bash(git log *)", "Bash(git show *)", "Bash(ls *)", "Write(.factory-crew-*)"]
+sandbox = "read-only"
+
+[agents.the-bookie]
+uses_role = "summarizer"
+effort = "low"
+prompt = ".ai/prompts/crew/the-bookie.v1.md"
+form = "scorecard"
+tools = ["Read", "Write(.factory-crew-*)"]
+sandbox = "read-only"
+
+# Triggers. when: always | risk (the unit's risk class or files match rules.risk_*) | surface (files match rules.surface_paths)
+[[triggers]]
+event = "row_untriaged"
+agent = "sorter-sam"
+when = "always"
+
+[[triggers]]
+event = "before_cut"
+agent = "sweeper-sid"
+when = "always"
+
+[[triggers]]
+event = "before_cut"
+agent = "plan-coverage-auditor"
+when = "always"
+
+[[triggers]]
+event = "plan_changed"
+agent = "plan-coverage-auditor"
+when = "always"
+
+[[triggers]]
+event = "unit_without_brief"
+agent = "quill"
+when = "always"
+
+[[triggers]]
+event = "check_passed"
+agent = "inspector-grumble"
+when = "always"
+
+[[triggers]]
+event = "check_passed"
+agent = "lockjaw"
+when = "risk"
+
+[[triggers]]
+event = "check_passed"
+agent = "thomasina"
+when = "surface"
+
+[[triggers]]
+event = "row_landed"
+agent = "spec-conformance-auditor"
+when = "always"
+
+[[triggers]]
+event = "row_landed"
+agent = "thomasina"
+when = "surface"
+
+[[triggers]]
+event = "row_landed"
+agent = "claim-verifier"
+when = "always"
+
+[[triggers]]
+event = "done_claim"
+agent = "claim-verifier"
+when = "always"
+
+[[triggers]]
+event = "handoff"
+agent = "claim-verifier"
+when = "always"
+
+[[triggers]]
+event = "daily_report"
+agent = "claim-verifier"
+when = "always"
+
+[[triggers]]
+event = "daily_retro"
+agent = "the-bookie"
+when = "always"

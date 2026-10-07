@@ -1,0 +1,41 @@
+{
+  "source": {
+    "description": "Example source: MediaStore already provides upload, ownership, storage, and reload. R1 adds a profile-photo interface using that existing engine.",
+    "outcomes": [
+      {
+        "id": "O1",
+        "text": "Users retain their profile photo after reload.",
+        "requirements": [
+          "R1"
+        ],
+        "first_proof": "S1"
+      }
+    ],
+    "requirements": ["R1"],
+    "features": ["Upload a profile photo"]
+  },
+  "engines": [
+    {"id": "E1", "title": "MediaStore", "existing": true}
+  ],
+  "slices": [
+    {
+      "id": "S1",
+      "title": "Upload a profile photo",
+      "behavior": "A photo uploaded through the profile interface remains visible after reload.",
+      "layers_touched": ["interface", "MediaStore integration"],
+      "acceptance": [
+        {
+          "check": "The same profile photo is visible after reload.",
+          "type": "yes_no",
+          "observable": "Upload a profile photo through the interface, reload, and see the same photo."
+        }
+      ],
+      "blocked_by": [],
+      "size": "S",
+      "est_hours": 2,
+      "covers": ["R1"],
+      "outcomes": ["O1"],
+      "engines": {"E1": "uses"}
+    }
+  ]
+}

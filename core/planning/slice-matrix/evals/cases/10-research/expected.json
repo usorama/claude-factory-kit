@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "must_stop": false,
+  "properties": [
+    {
+      "id": "slice_count",
+      "type": "slice_count",
+      "min": 3,
+      "max": 4
+    },
+    {
+      "id": "covers",
+      "type": "covers",
+      "ids": [
+        "R1",
+        "R2",
+        "R3"
+      ]
+    },
+    {
+      "id": "first_unblocked",
+      "type": "first_unblocked"
+    },
+    {
+      "id": "first_vertical",
+      "type": "first_vertical"
+    },
+    {
+      "id": "max_hours",
+      "type": "max_hours",
+      "value": 8
+    },
+    {
+      "id": "acyclic",
+      "type": "acyclic"
+    },
+    {
+      "id": "first_covers",
+      "type": "first_covers",
+      "ids": [
+        "R1"
+      ]
+    },
+    {
+      "id": "required_engine",
+      "type": "required_engine",
+      "aliases": [
+        "evidence",
+        "extraction",
+        "source ledger"
+      ]
+    },
+    {
+      "id": "synthesis-after-a",
+      "type": "dependency",
+      "before": "R1",
+      "after": "R3"
+    },
+    {
+      "id": "synthesis-after-b",
+      "type": "dependency",
+      "before": "R2",
+      "after": "R3"
+    },
+    {
+      "id": "requirement_terms",
+      "type": "requirement_terms",
+      "requirement": "R3",
+      "groups": [
+        [
+          "causality",
+          "causal"
+        ],
+        [
+          "cite",
+          "citation",
+          "cites",
+          "references"
+        ]
+      ]
+    }
+  ]
+}

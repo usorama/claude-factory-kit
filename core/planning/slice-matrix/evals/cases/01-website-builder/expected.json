@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "must_stop": false,
+  "properties": [
+    {
+      "id": "slice_count",
+      "type": "slice_count",
+      "min": 6,
+      "max": 9
+    },
+    {
+      "id": "covers",
+      "type": "covers",
+      "ids": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6"
+      ]
+    },
+    {
+      "id": "first_unblocked",
+      "type": "first_unblocked"
+    },
+    {
+      "id": "first_vertical",
+      "type": "first_vertical"
+    },
+    {
+      "id": "max_hours",
+      "type": "max_hours",
+      "value": 8
+    },
+    {
+      "id": "acyclic",
+      "type": "acyclic"
+    },
+    {
+      "id": "first_covers",
+      "type": "first_covers",
+      "ids": [
+        "R1"
+      ]
+    },
+    {
+      "id": "first_terms",
+      "type": "first_terms",
+      "groups": [
+        [
+          "reload",
+          "refresh"
+        ],
+        [
+          "title"
+        ]
+      ]
+    },
+    {
+      "id": "page-engine",
+      "type": "required_engine",
+      "aliases": [
+        "page storage",
+        "page persistence",
+        "page editing",
+        "page engine",
+        "page management"
+      ]
+    },
+    {
+      "id": "media-engine",
+      "type": "required_engine",
+      "aliases": [
+        "media",
+        "image storage",
+        "asset storage"
+      ]
+    },
+    {
+      "id": "publish-engine",
+      "type": "required_engine",
+      "aliases": [
+        "publishing",
+        "publication",
+        "publish"
+      ]
+    }
+  ]
+}

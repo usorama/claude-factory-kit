@@ -1,0 +1,11 @@
+{
+  "description": "Factory guards: the chief of staff may not stop while records disagree, and may not start a code-only role or pass a model to a sub-agent.",
+  "hooks": {
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/adapters/claude-code/hooks/stop_hook.sh\"", "timeout": 60}]}
+    ],
+    "PreToolUse": [
+      {"matcher": "Agent|Task", "hooks": [{"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/adapters/claude-code/hooks/agent_guard.py\"", "timeout": 10}]}
+    ]
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "must_stop": false,
+  "properties": [
+    {
+      "id": "slice_count",
+      "type": "slice_count",
+      "min": 6,
+      "max": 8
+    },
+    {
+      "id": "covers",
+      "type": "covers",
+      "ids": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6"
+      ]
+    },
+    {
+      "id": "first_unblocked",
+      "type": "first_unblocked"
+    },
+    {
+      "id": "first_vertical",
+      "type": "first_vertical"
+    },
+    {
+      "id": "max_hours",
+      "type": "max_hours",
+      "value": 8
+    },
+    {
+      "id": "acyclic",
+      "type": "acyclic"
+    },
+    {
+      "id": "enabling_max",
+      "type": "enabling_max",
+      "value": 0.2
+    },
+    {
+      "id": "first_covers",
+      "type": "first_covers",
+      "ids": [
+        "R1"
+      ]
+    },
+    {
+      "id": "contract-after-R2",
+      "type": "dependency",
+      "before": "R2",
+      "after": "R6"
+    },
+    {
+      "id": "contract-after-R3",
+      "type": "dependency",
+      "before": "R3",
+      "after": "R6"
+    },
+    {
+      "id": "contract-after-R4",
+      "type": "dependency",
+      "before": "R4",
+      "after": "R6"
+    },
+    {
+      "id": "contract-after-R5",
+      "type": "dependency",
+      "before": "R5",
+      "after": "R6"
+    },
+    {
+      "id": "requirement_terms",
+      "type": "requirement_terms",
+      "requirement": "R6",
+      "groups": [
+        [
+          "zero",
+          "0",
+          "no remaining"
+        ],
+        [
+          "customer_id"
+        ],
+        [
+          "approval",
+          "approved"
+        ]
+      ]
+    }
+  ]
+}

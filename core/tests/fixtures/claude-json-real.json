@@ -1,0 +1,19 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 1689,
+ "num_turns": 1,
+ "result": "ok",
+ "stop_reason": "end_turn",
+ "total_cost_usd": 0.0284816,
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "usage": {
+  "input_tokens": 10,
+  "cache_creation_input_tokens": 13441,
+  "cache_read_input_tokens": 13796,
+  "output_tokens": 42
+ },
+ "_captured": "claude 2.1.290, `claude -p 'Reply with exactly the word: ok' --model haiku --output-format json --no-session-persistence`, Linux x86_64, 2026-10-07. Kept fields only; session id and uuid removed."
+}

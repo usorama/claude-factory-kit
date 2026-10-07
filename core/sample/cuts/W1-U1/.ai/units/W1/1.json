@@ -1,0 +1,17 @@
+{
+ "row": "W1",
+ "n": 1,
+ "title": "Count the words in a text",
+ "paragraph": "The text kit counts the words in a text. Words are separated by any run of spaces, tabs or new lines. Empty text has zero words. Anything that is not text is refused with a clear message. Sabotage: remove the refusal of non-text input; the refusal test goes red.",
+ "tests": [
+  "tests/test_words.py::test_counts_words_separated_by_any_spaces",
+  "tests/test_words.py::test_empty_text_has_zero_words",
+  "tests/test_words.py::test_non_text_is_refused"
+ ],
+ "files": [
+  "textkit/words.py"
+ ],
+ "out_of_scope": "No punctuation rules, no languages without spaces.",
+ "estimate_minutes": 15,
+ "seam": "count_words(text)"
+}

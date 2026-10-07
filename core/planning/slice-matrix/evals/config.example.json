@@ -1,0 +1,8 @@
+{
+ "_note": "Use exact model IDs that answered `factory probe` on this machine; never an alias. {output} is the results folder, {last} the final-message file.",
+ "slicers": {
+  "claude-sonnet-5-5": ["claude", "-p", "--model", "claude-sonnet-5-5", "--effort", "medium", "--permission-mode", "dontAsk", "--no-session-persistence", "--allowedTools", "Read", "Write", "Glob", "Grep", "Bash(python3 *)", "--add-dir", "{output}", "--"],
+  "gpt-6-sol": ["codex", "exec", "-m", "gpt-6-sol", "-c", "model_reasoning_effort=medium", "-s", "workspace-write", "--ephemeral", "--add-dir", "{output}", "-o", "{last}"]
+ },
+ "judge": ["claude", "-p", "--model", "claude-opus-5-5", "--effort", "high", "--permission-mode", "dontAsk", "--no-session-persistence", "--allowedTools", "Read", "--"]
+}

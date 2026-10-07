@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Slice matrix",
+  "type": "object",
+  "if": {
+    "required": [
+      "stop"
+    ]
+  },
+  "then": {
+    "$ref": "#/$defs/stop"
+  },
+  "else": {
+    "$ref": "#/$defs/matrix"
+  },
+  "$defs": {
+    "stop": {
+      "type": "object",
+      "required": [
+        "stop",
+        "reason",
+        "questions",
+        "rule"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "stop": {
+          "const": true
+        },
+        "reason": {
+          "$ref": "#/$defs/text"
+        },
+        "questions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "rule": {
+          "enum": [
+            "vague_acceptance",
+            "contradictory_order",
+            "missing_source"
+          ]
+        }
+      }
+    },
+    "matrix": {
+      "required": [
+        "source",
+        "engines",
+        "slices"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "object",
+          "required": [
+            "description",
+            "outcomes",
+            "requirements",
+            "features"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "$ref": "#/$defs/text"
+            },
+            "outcomes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "text",
+                  "requirements",
+                  "first_proof"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "$ref": "#/$defs/id"
+                  },
+                  "text": {
+                    "$ref": "#/$defs/text"
+                  },
+                  "requirements": {
+                    "$ref": "#/$defs/ids",
+                    "minItems": 1
+                  },
+                  "first_proof": {
+                    "$ref": "#/$defs/id"
+                  }
+                }
+              }
+            },
+            "requirements": {
+              "$ref": "#/$defs/ids",
+              "minItems": 1
+            },
+            "features": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/text"
+              }
+            },
+            "capacity": {
+              "type": "object",
+              "required": [
+                "builders",
+                "hours_per_day"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "builders": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "hours_per_day": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 24
+                }
+              }
+            }
+          }
+        },
+        "engines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "title"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "title": {
+                "$ref": "#/$defs/text"
+              },
+              "existing": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "slices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/slice"
+          }
+        }
+      }
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+    },
+    "ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/id"
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "required": [
+        "check",
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "check": {
+          "$ref": "#/$defs/text"
+        },
+        "type": {
+          "const": "yes_no"
+        },
+        "command": {
+          "$ref": "#/$defs/text"
+        },
+        "observable": {
+          "$ref": "#/$defs/text"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "command"
+          ]
+        },
+        {
+          "required": [
+            "observable"
+          ]
+        }
+      ]
+    },
+    "slice": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "behavior",
+        "layers_touched",
+        "acceptance",
+        "blocked_by",
+        "size",
+        "est_hours",
+        "covers",
+        "outcomes",
+        "engines"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "title": {
+          "$ref": "#/$defs/text"
+        },
+        "behavior": {
+          "$ref": "#/$defs/text"
+        },
+        "layers_touched": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "acceptance": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/acceptance"
+          }
+        },
+        "blocked_by": {
+          "$ref": "#/$defs/ids"
+        },
+        "runs_if": {
+          "type": "object",
+          "required": [
+            "failed"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "failed": {
+              "$ref": "#/$defs/ids",
+              "minItems": 1
+            }
+          }
+        },
+        "blocked_by_any": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ids",
+            "minItems": 1
+          }
+        },
+        "size": {
+          "enum": [
+            "S",
+            "M",
+            "L"
+          ]
+        },
+        "est_hours": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 8
+        },
+        "covers": {
+          "$ref": "#/$defs/ids"
+        },
+        "outcomes": {
+          "$ref": "#/$defs/ids",
+          "minItems": 1
+        },
+        "engines": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/id"
+          },
+          "additionalProperties": {
+            "enum": [
+              "builds",
+              "uses"
+            ]
+          }
+        },
+        "blocked_by_decisions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "scope": {
+          "enum": [
+            "base",
+            "product-setting"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "vertical",
+            "enabling"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/text"
+        },
+        "wave": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "enabling"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reason"
+            ]
+          },
+          "else": {
+            "properties": {
+              "layers_touched": {
+                "minItems": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "factory",
+  "version": "1.2.0",
+  "description": "Clock-driven software factory: failing tests first, a builder and a different reviewer, deterministic gates, lessons that improve the rules. Claude Code adapter of a tool-neutral core.",
+  "author": {
+    "name": "<owner>"
+  },
+  "repository": "https://github.com/<owner>/claude-factory-kit",
+  "license": "UNLICENSED",
+  "commands": "./adapters/claude-code/commands/",
+  "skills": "./adapters/claude-code/skills/",
+  "hooks": "./adapters/claude-code/hooks/hooks.json"
+}

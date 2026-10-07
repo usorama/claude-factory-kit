@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Fake `gh` for the dry run: pr create / comment / merge / view, recorded in $FAKE_GH_LOG.
+`pr merge --match-head-commit SHA` (with or without --auto) pushes SHA to origin main, fast-forward
+only, like GitHub with no unmet branch rules. `pr view N --json state` answers MERGED or OPEN.
+FAKE_GH_FAIL=merge makes `pr merge` fail with a branch-protection message."""
+import json
+import os
+import subprocess
+import sys
+
+args = sys.argv[1:]
+log = os.environ.get("FAKE_GH_LOG", "fake-gh.jsonl")
+with open(log, "a") as stream:
+    stream.write(json.dumps(args) + "\n")
+calls = [json.loads(line) for line in open(log)]
+if args[:2] == ["pr", "create"]:
+    print(f"https://github.example/<owner>/<repo>/pull/{sum(c[:2] == ['pr', 'create'] for c in calls)}")
+elif args[:2] == ["pr", "merge"]:
+    if os.environ.get("FAKE_GH_FAIL") == "merge":
+        print("GraphQL: Base branch policy prohibits the merge. (mergePullRequest)", file=sys.stderr)
+        sys.exit(1)
+    sha = args[args.index("--match-head-commit") + 1]
+    pushed = subprocess.run(["git", "push", "-q", "origin", f"{sha}:refs/heads/main"], capture_output=True, text=True)
+    if pushed.returncode:  # not a fast-forward: make a merge commit, as GitHub does
+        git = lambda *a: subprocess.run(["git", *a], capture_output=True, text=True, check=True)
+        git("fetch", "-q", "origin", "main")
+        tmp = os.path.join(os.path.dirname(os.path.abspath(log)), f"fake-merge-{sha[:8]}")
+        git("worktree", "add", "-q", "--detach", tmp, "FETCH_HEAD")
+        try:
+            subprocess.run(["git", "merge", "-q", "--no-edit", sha], cwd=tmp, check=True, capture_output=True)
+            subprocess.run(["git", "push", "-q", "origin", "HEAD:refs/heads/main"], cwd=tmp, check=True, capture_output=True)
+        finally:
+            git("worktree", "remove", "--force", tmp)
+    with open(log, "a") as stream:
+        stream.write(json.dumps(["merged", args[2]]) + "\n")
+elif args[:2] == ["pr", "view"]:
+    print(json.dumps({"state": "MERGED" if ["merged", args[2]] in calls else "OPEN"}))
+elif args[:2] != ["pr", "comment"]:
+    print(f"fake gh: unsupported {args}", file=sys.stderr)
+    sys.exit(1)
