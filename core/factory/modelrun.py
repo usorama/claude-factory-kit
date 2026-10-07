@@ -15,9 +15,14 @@ MODEL_GONE = re.compile(r"issue with the selected model|unrecognized_model|model
                         r"model[^.]{0,60}(not found|does not exist|not available)", re.I)
 
 NO_NETWORK = json.dumps({"sandbox": {"enabled": True, "network": {"allowedDomains": []}}})
-LIMIT_WORDS = re.compile(r"usage limit|rate limit|limit reached|limit will reset|overloaded|quota|\b429\b", re.I)
+# Only the service's own limit answers: status 429, or the claude tool's limit phrases. Words like "quota" in a failed
+# run's text may be about the unit's own subject and must not pause every model step.
+LIMIT_WORDS = re.compile(r"API Error: 429|\busage limit reached\b|limit will reset at|Claude AI usage limit|"
+                         r"\brate_limit_error\b", re.I)
 TOKEN_FILE = Path(os.environ.get("FACTORY_CLAUDE_TOKEN_FILE", "~/.config/factory/claude-token")).expanduser()
 FORM_NAME = ".factory-review.json"
+RUN_TESTS = Path(__file__).resolve().parent / "run_tests.py"
+RUN_TESTS_RULE = f"Bash(python3 {RUN_TESTS} *)"  # the only way a role runs tests (scrubbed and fenced)
 
 
 def claude_usage(stdout):
@@ -88,13 +93,38 @@ def role_command(role, values):
     return command
 
 
+ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "TMPDIR", "SHELL",
+            "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR",
+            "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
+            "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS", "REQUESTS_CA_BUNDLE")
+ENV_KEEP_PREFIXES = ("FACTORY_", "ANTHROPIC_", "CLAUDE_CODE_", "OPENAI_")
+# Files a role must never read: tokens and credentials of gh, git, cloud tools, containers, the factory and the
+# agent tools themselves. Put on every claude command line; a project settings file does not apply in a new work
+# folder (tests/fixtures/claude-read-deny-2.1.290.json shows a command-line Read(~/...) deny works there).
+DENY_READ = ["Read(~/.ssh/**)", "Read(~/.aws/**)", "Read(~/.config/gh/**)", "Read(~/.netrc)", "Read(~/.git-credentials)",
+             "Read(~/.config/git/credentials)", "Read(~/.config/factory/**)", "Read(~/.factory-env.sh)", "Read(~/.kube/**)",
+             "Read(~/.docker/config.json)", "Read(~/.config/gcloud/**)", "Read(~/.azure/**)", "Read(~/.npmrc)",
+             "Read(~/.pypirc)", "Read(~/.claude/.credentials.json)", "Read(~/.codex/auth.json)", "Read(**/.env)",
+             "Read(**/.env.*)"]
+
+
 def claude_env(role):
-    """The clock's environment plus the role, no auto-update, and the Claude token if a file holds one.
-    The token goes only to the role process, never into the env file or the test runs."""
-    env = dict(os.environ, FACTORY_ROLE=role, DISABLE_AUTOUPDATER="1")
+    """The environment a role or crew process gets: an allow list, never the clock's whole environment (cloud keys,
+    GitHub and package tokens stay out). The Claude token comes from its file and goes only to this process."""
+    env = {k: v for k, v in os.environ.items() if k in ENV_KEEP or k.startswith(ENV_KEEP_PREFIXES)}
+    env.update(FACTORY_ROLE=role, DISABLE_AUTOUPDATER="1")
     if TOKEN_FILE.is_file():
         env["CLAUDE_CODE_OAUTH_TOKEN"] = TOKEN_FILE.read_text().strip()
     return env
+
+
+def with_read_denies(command):
+    """Append the secret-file Read denies to a claude command (its --disallowedTools list is last)."""
+    if not command or Path(command[0]).name != "claude":
+        return command
+    if "--disallowedTools" not in command:
+        command = command + ["--disallowedTools"]
+    return command + DENY_READ
 
 
 def run_tracked(command, cwd, input, env, timeout, pidfile):

@@ -11,8 +11,8 @@ show capabilities shared by those rows. For example, uploading a profile photo
 can create a small storage engine. Adding a cover image can reuse that engine.
 The engine first arrives inside the working photo-upload path.
 
-This combines Matt Pocock's tracer-bullet approach in `to-tickets` with the
-video's look-across pass. A tracer bullet is a thin path through all the layers
+This combines Matt Pocock's tracer-bullet approach in `to-tickets` with a
+look-across pass that finds shared engines. A tracer bullet is a thin path through all the layers
 needed to make one behavior work. An engine is a capability needed by two or
 more features, built once and reused. An engine already built before this plan
 may have just one user here. Do not make engine-only construction rows.

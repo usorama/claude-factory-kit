@@ -31,6 +31,13 @@ class GhFailed(RuntimeError):
     """A gh call failed (branch protection, permissions, network); the message carries gh's stderr."""
 
 
+class PushRefused(RuntimeError):
+    """The server refused a push for another reason than a moved base (a protected branch, a hook, a permission)."""
+
+
+MOVED = re.compile(r"stale info|fetch first|non-fast-forward|\(stale\)|rejected.*\(fetch first\)", re.I)
+
+
 class MainMoved(RuntimeError):
     """Main moved during landing; try again next tick, no attempt is used."""
 
@@ -56,7 +63,7 @@ def catch_up(worktree, base, check_base):
     if git(worktree, "rev-list", "--merges", f"{fork}..HEAD").stdout.strip():
         return "the unit branch contains a merge commit; re-cut the unit from main", None
     cut_commits = int(git(worktree, "rev-list", "--count", f"{fork}..{check_base}").stdout)
-    rebase = git(worktree, "-c", "user.name=factory", "-c", "user.email=factory@localhost", "rebase", "--empty=keep", "--onto", remote, fork, check=False)
+    rebase = git(worktree, "rebase", "--empty=keep", "--onto", remote, fork, check=False)
     if rebase.returncode != 0:
         files = git(worktree, "diff", "--name-only", "--diff-filter=U", check=False).stdout.split()
         git(worktree, "rebase", "--abort", check=False)
@@ -78,18 +85,18 @@ def merged_suite(worktree, fetched, tolerated, method="merge", message="factory:
     """Build the exact commit that will land (the unit joined with the fetched base) and run the whole
     suite on it. Returns that commit: what is tested is what is pushed."""
     head = git(worktree, "rev-parse", "HEAD").stdout.strip()
-    ident = ["-c", "user.name=factory", "-c", "user.email=factory@localhost", "-c", "core.hooksPath=/dev/null"]
+    # merges here use the person's own git identity, signing settings and hooks (never a made-up author)
     with tempfile.TemporaryDirectory(prefix="factory-land-") as folder:
         merged = Path(folder) / "merged"
         git(worktree, "worktree", "add", "-q", "--detach", str(merged), fetched)
         try:
             if method == "squash":
-                joined = git(merged, *ident, "merge", "-q", "--squash", head, check=False)
+                joined = git(merged, "merge", "-q", "--squash", head, check=False)
                 if joined.returncode == 0:
-                    joined = git(merged, *ident, "commit", "-q", "-m", message, check=False)
+                    joined = git(merged, "commit", "-q", "-m", message, check=False)
             else:
                 how = ["--ff-only"] if method == "rebase" else ["--no-ff", "-m", message]
-                joined = git(merged, *ident, "merge", "-q", *how, head, check=False)
+                joined = git(merged, "merge", "-q", *how, head, check=False)
             if joined.returncode != 0:
                 raise LandRefused(f"the unit does not join main by {method}: {joined.stderr.strip()[-200:]}")
             code, records, collect_errors, _ = run(merged)
@@ -109,7 +116,10 @@ def push_direct(worktree, commit, base, fetched):
     pushed = git(worktree, "push", "-q", f"--force-with-lease=refs/heads/{base}:{fetched}", "origin",
                  f"{commit}:refs/heads/{base}", check=False)
     if pushed.returncode != 0:
-        raise MainMoved(f"{base} moved since the check (push refused); landing tries again next tick")
+        detail = (pushed.stderr or pushed.stdout).strip()
+        if MOVED.search(detail):
+            raise MainMoved(f"{base} moved since the check (push refused); landing tries again next tick")
+        raise PushRefused(f"the server refused the push to {base}: {detail[-400:]}")
     git(worktree, "fetch", "-q", "origin", base, check=False)
 
 

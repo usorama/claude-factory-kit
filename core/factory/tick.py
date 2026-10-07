@@ -165,6 +165,13 @@ def refusal(root, cfg):
     problem = config_problem(cfg, root)
     if problem:
         return problem
+    import protect
+    changed = protect.changes(root)
+    if changed:
+        return (f"protected files changed without a person's approval: {', '.join(changed[:5])}; "
+                "a person reads them with factory approve and records them with factory approve --yes")
+    if git(root, "var", "GIT_COMMITTER_IDENT", check=False).returncode != 0:
+        return "git has no identity for the person running the factory: set git config user.name and user.email"
     if git(root, "fetch", "-q", "origin", cfg["base"], check=False).returncode != 0:
         return f"cannot fetch origin/{cfg['base']}; nothing moves until it works"
     return None
@@ -205,7 +212,13 @@ def tick_once(root, runners=None):
             stopped = sum(e["state"] in STOPPED for e in units)
             idle = (f"only stopped units ({stopped}); the orchestrator must handle their cards" if stopped
                     else "queue empty; the orchestrator must cut units")
-        return tick_line(root, {**counts, "cards_written": cards, "idle_reason": idle})
+        line = {**counts, "cards_written": cards, "idle_reason": idle}
+        from consistency import kit_outdated
+        behind = kit_outdated(root)
+        if behind:  # loud: every tick line and the clock's error log say it until the project is updated
+            line["warning"] = f"factory {behind[0]} is behind the installed kit {behind[1]}: run factory init --apply --update"
+            print(f"WARNING: {line['warning']}", file=sys.stderr)
+        return tick_line(root, line)
     finally:
         lock.__exit__()
 
@@ -233,7 +246,7 @@ def close_row(root, row):
         raise Refused(f"{row} has units that have not landed")
     files = sorted({f for e in units for f in crew.load_files(root, e)})
     prs = ", ".join(str(e.get("pr", "")).rsplit("/", 1)[-1] for e in units)
-    context = {"row": row, "text": backlog_text(root, row), "units": [e["unit"] for e in units], "files": files,
+    context = {"row": row, "text": backlog_text(root, row), "units": [str(Path(e["worktree"]) / e["unit"]) for e in units], "files": files,
                "prs": prs, "claim": f"Row {row} is done: {len(units)} unit(s) landed as pull requests {prs}."}
     for name in crew.triggered("row_landed", context):
         data, verdict = crew.run_agent(root, name, "row_landed", row, dict(context, unit_files=files))
@@ -311,9 +324,15 @@ def release(root, unit_path, note, wait=3600.0):
     return {"unit": unit_path, "released": True, "cut_commit": head}
 
 
-def verify_checkout(root, unit_path, folder):
+def verify_checkout(root, unit_path, folder=None):
     """A separate detached checkout of main containing the landed unit, with its named tests run there.
-    Sabotage only in this copy, never in the live checkout the clock uses."""
+    Sabotage only in this copy, never in the live checkout the clock uses. The copy always lives under
+    var/factory/scratch (inside the person's own repo), never in a shared folder such as /tmp."""
+    scratch = (var(root) / "scratch").resolve()
+    folder = Path(folder) if folder else scratch / ("verify-" + re.sub(r"[^A-Za-z0-9_.-]", "_", unit_path))
+    if scratch not in folder.resolve().parents:
+        raise Refused(f"the sabotage copy must be under {scratch}; leave the folder out to get one there")
+    folder.parent.mkdir(parents=True, exist_ok=True)
     entry = next((e for e in read_queue(root)["units"] if e["unit"] == unit_path and e["state"] == "landed"), None)
     if entry is None:
         raise Refused(f"{unit_path} has not landed")
@@ -327,17 +346,25 @@ def verify_checkout(root, unit_path, folder):
                     f"git worktree remove --force {folder}"}
 
 
-def prune(root):
-    """Remove the work folders and local branches of landed and parked units."""
-    removed = []
+def prune(root, force=False):
+    """Remove the work folders of landed and parked units. A folder with uncommitted or untracked work is kept
+    unless force is given; a landed unit's branch is deleted only if merged (-d); a parked unit's branch is kept."""
+    removed, kept = [], []
     for entry in read_queue(root)["units"]:
-        if entry["state"] in ("landed", "parked") and Path(entry["worktree"]).exists():
-            branch = git(entry["worktree"], "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-            git(root, "worktree", "remove", "--force", entry["worktree"], check=False)
-            git(root, "branch", "-D", branch, check=False)
-            removed.append(entry["worktree"])
+        folder = Path(entry["worktree"])
+        if entry["state"] not in ("landed", "parked") or not folder.exists():
+            continue
+        dirty = git(folder, "status", "--porcelain", "--untracked-files=normal", check=False).stdout.strip()
+        if dirty and not force:
+            kept.append(f"{folder} (uncommitted work; prune --force removes it)")
+            continue
+        branch = git(folder, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        git(root, "worktree", "remove", *(["--force"] if force else []), str(folder), check=False)
+        if entry["state"] == "landed":
+            git(root, "branch", "-d", branch, check=False)  # refused by git when the branch is not merged
+        removed.append(str(folder))
     git(root, "worktree", "prune", check=False)
-    return removed
+    return {"removed": removed, "kept": kept}
 
 
 def defect(root, unit_path, note):
@@ -354,7 +381,8 @@ def main(argv=None, root=None):
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("tick")
     sub.add_parser("status")
-    sub.add_parser("prune")
+    pruning = sub.add_parser("prune")
+    pruning.add_argument("--force", action="store_true")
     closing = sub.add_parser("close-row")
     closing.add_argument("row")
     for name in ("hold", "release"):
@@ -363,7 +391,7 @@ def main(argv=None, root=None):
         stop.add_argument("--reason" if name == "hold" else "--note", required=True, dest="text")
     checkout = sub.add_parser("verify-checkout")
     checkout.add_argument("unit")
-    checkout.add_argument("folder")
+    checkout.add_argument("folder", nargs="?", help="default: a new folder under var/factory/scratch")
     escaped = sub.add_parser("defect")
     escaped.add_argument("unit")
     escaped.add_argument("--note", required=True)
@@ -388,7 +416,7 @@ def main(argv=None, root=None):
         elif args.command == "enqueue":
             result = enqueue(root, args.unit, args.worktree)
         elif args.command == "prune":
-            result = prune(root)
+            result = prune(root, args.force)
         elif args.command == "hold":
             result = hold(root, args.unit, args.text)
         elif args.command == "release":

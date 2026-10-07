@@ -1,17 +1,21 @@
-# Chief of Staff jobs: tick, cut, verify, stop, review, close, retro, report
+# Chief of Staff jobs: tick, cut, verify, stop, review, close, retro, report, handoff
 
 `factory` below is the kit CLI (`python3 <kit>/core/cli.py`, or the harness command that wraps it). Run every step
 from the live checkout (the main repo folder) unless a step names another folder.
 
 ## tick (every loop iteration)
+0. **First tick after a restart** (the newest line of var/factory/restart.log is newer than your session): read the
+   newest note in var/factory/handoff/ and the end of var/factory/restart.log. Restart the agents the note lists as
+   running, with the commands it gives. Report the harness version the log names and anything the note left open.
 1. Read the state.md Position block, `python3 factory/tick.py status` and `tail -50 var/factory/tick.err`.
 2. **Landed units:** for each unit landed since the last tick, job `verify <unit>`.
 3. **Stopped units:** read the reason, then re-cut, split or reset with
    `python3 factory/tick.py set <unit> <state> --reason <cut_defect|machinery|split|rebase|data_fix|other> --note "<why>"`
-   (it closes the unit's card). A DEC-roles card (a pinned model stopped answering) is the human's: never switch models.
+   (it closes the unit's card). A decision card (DEC) named DEC-roles means a pinned model stopped answering. It is the human's: never switch models.
 4. **Fill the lanes:** while fewer units move than `lanes` and a ready row exists, job `cut`.
 5. **Rows:** when every unit of a row has landed, job `close <row>`.
-6. **Cards:** `factory dashboard` (it recomputes the numbers), then `python3 factory/asks.py notify-text`. If it prints
+6. **Cards:** `factory dashboard` (it recomputes the numbers; publish the page only when its last line says
+   "publish: allowed"), then `python3 factory/asks.py notify-text`. If it prints
    decision cards, send that text with your notification tool; only decisions are ever pushed, never unit stops.
 7. **Retro:** if it is past `retro_time` and `var/factory/daily/<today>.md` does not exist, job `retro`.
 8. Fix every `python3 factory/consistency.py` finding, update the Position block if anything changed, commit, push.
@@ -28,12 +32,12 @@ from the live checkout (the main repo folder) unless a step names another folder
    `.ai/specs/<row>-U<n>.md` there. Without a brief, Quill writes it on the clock.
 5. **Check before the clock sees it:** in the unit folder, `python3 factory/unit_check.py .ai/units/<row>/<n>.json`
    and `python3 factory/red_check.py .ai/units/<row>/<n>.json`. The mutation guard runs after the build, on the clock.
-6. Commit on the unit branch. **Go back to the live checkout** and enqueue there:
-   `python3 factory/tick.py enqueue .ai/units/<row>/<n>.json <unit folder>` (it refuses inside a unit folder).
+6. Commit on the unit branch. **Go back to the live checkout** and enqueue there with
+   `python3 factory/tick.py enqueue .ai/units/<row>/<n>.json <unit folder>`. Enqueue refuses inside a unit folder.
 
 ## verify <unit>
 Never sabotage the live checkout: the clock may be running in it.
-1. `python3 factory/tick.py verify-checkout <unit> <scratch folder>`: a separate checkout of main with the unit landed;
+1. `python3 factory/tick.py verify-checkout <unit>`: a separate checkout (under var/factory/scratch) of main with the unit landed;
    it runs the named tests there.
 2. In that folder only: apply the brief's named sabotage, see the named test go red, restore, see it green.
 3. Remove the folder (`git worktree remove --force <folder>`) and record the result in state.md. A failed re-run is a
@@ -72,3 +76,9 @@ tests) or one replaced rule line, apply at most two (`lessons.py apply`), file e
 ## report
 The daily report plus your outcome line: what landed (verified), what stopped and why, hand corrections, cost, open
 decisions. Plain words, outcome first. `factory dashboard` passes the staleness gate before any publish.
+
+## handoff (before a restart, or when the person asks)
+Write var/factory/handoff/<universal time, for example 2026-10-07T10-30>.md: the Position block, the units in flight, every agent or
+session you started that is still running and the exact command that restarts it, open decisions, and what you were
+about to do. Commit and push any tracked change. Then tell the person: "Ready to restart: run `factory restart`
+yourself." Never run `factory restart` or `factory approve` yourself; only a person does.

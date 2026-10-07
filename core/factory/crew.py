@@ -7,21 +7,28 @@
 Other triggers fire inside the clock and the commands: an untriaged backlog row (tick), a unit with no
 brief (red step), a passed build check (review step), a landed row (tick.py close-row), the daily report
 and the retro (factory retro). An agent's answer is a JSON form; code accepts or refuses it. Records:
-var/factory/crew/<agent>.jsonl. Memory: crew/<agent>/memory.md in the project, appended by code.
+var/factory/crew/<agent>.jsonl. An agent's memory_line is kept in var/factory/crew/<agent>-memory.md as a record for
+the person; it is never fed to a later run (one injected run must not steer all later ones). Agents see only
+their scorecard, which code counts.
 """
+import contextlib
 import fnmatch
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import time
 import tomllib
+import uuid
 from pathlib import Path
 
 from brief_check import BriefRefused, check_brief
-from common import BudgetReached, budget_gate, config, folder_problem, log, now, read_jsonl, spend, var
+from unit_check import TEST_ID
+from common import BudgetReached, budget_gate, config, folder_problem, git, log, now, read_jsonl, spend, var
 from drive import ModelGone, RetryOnce, UsageLimit
-from modelrun import NO_NETWORK, claude_env, claude_usage, classify, fill, role_command, run_tracked
+from modelrun import (NO_NETWORK, RUN_TESTS, RUN_TESTS_RULE, claude_env, claude_usage, classify, fill, role_command,
+                      run_tracked, with_read_denies)
 
 HERE = Path(__file__).resolve().parent
 OUTPUT = ".factory-crew-{name}.json"
@@ -72,10 +79,15 @@ def check_form(form, data, context):
             raise CrewRefused("triage needs still_real (true or false) and size S, M or L")
         return "real" if data["still_real"] else "not real"
     if form == "sweep":
+        if "evidence_command" in data:
+            raise CrewRefused("a model may not hand the factory a command; name test ids in evidence_tests instead")
         if data.get("verdict") not in ("done", "not_done") or data.get("criterion") not in SWEEP_CRITERIA:
             raise CrewRefused("a sweep needs verdict done or not_done and a criterion C1 to C5 or NONE")
-        if data["verdict"] == "done" and (data["criterion"] == "NONE" or not data.get("evidence_command")):
-            raise CrewRefused("a done verdict needs a criterion and an evidence_command code can re-run")
+        tests = data.get("evidence_tests") or []
+        if not isinstance(tests, list) or not all(isinstance(t, str) and TEST_ID.fullmatch(t) for t in tests):
+            raise CrewRefused("evidence_tests must be a list of test ids written file.py::test_name")
+        if data["verdict"] == "done" and data["criterion"] == "NONE":
+            raise CrewRefused("a done verdict needs a criterion")
         return data["verdict"]
     if form == "coverage":
         items = need(data, "items", list)
@@ -126,7 +138,7 @@ def record(root, name, event, subject, verdict, receipt, ok=True, note=""):
 
 def remember(root, name, line):
     if line and str(line).strip():
-        memory = Path(root) / "crew" / name / "memory.md"
+        memory = var(root) / "crew" / f"{name}-memory.md"
         memory.parent.mkdir(parents=True, exist_ok=True)
         with memory.open("a") as stream:
             stream.write(f"- {now()[:10]}: {' '.join(str(line).split())[:200]}\n")
@@ -145,9 +157,32 @@ def crew_card(root, name, subject, cause, detail):
     return card
 
 
+@contextlib.contextmanager
+def scratch_worktree(root):
+    """A detached worktree of HEAD under var/factory/scratch, with the untracked planning files copied in, removed
+    afterwards. Crew agents and evidence reruns work here, never in the live checkout."""
+    folder = var(root) / "scratch" / uuid.uuid4().hex[:12]
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    git(root, "worktree", "add", "-q", "--detach", str(folder), "HEAD")
+    try:
+        for name in ("plan", "state.md", ".ai"):
+            source = Path(root) / name
+            if source.is_dir():
+                shutil.copytree(source, folder / name, dirs_exist_ok=True)
+            elif source.is_file():
+                shutil.copy2(source, folder / name)
+        yield folder
+    finally:
+        git(root, "worktree", "remove", "--force", str(folder), check=False)
+
+
 def run_agent(root, name, event, subject, context, workdir=None, run=subprocess.run):
     """Run one crew agent with the model pinned for its role; return (data, verdict). Never falls back.
+    Without a unit work folder, the agent works in a scratch worktree, never in the live checkout.
     Limits come from factory.toml (crew_max_turns, max_budget_crew_usd); the daily budget is checked first."""
+    if workdir is None:
+        with scratch_worktree(root) as folder:
+            return run_agent(root, name, event, subject, context, workdir=folder, run=run)
     root, crew, cfg = Path(root), load(), config(root)
     problem = folder_problem(cfg, root)
     if problem:
@@ -169,15 +204,18 @@ def run_agent(root, name, event, subject, context, workdir=None, run=subprocess.
     prompt = fill(prompt_path.read_text(), {
         "name": name, "output": output, "context": json.dumps({k: v for k, v in context.items() if k != "unit_data"})[:6000],
         "kinds": ", ".join(KINDS), "brief": context.get("brief", ""), "unit": context.get("unit", ""),
-        "base": context.get("base", ""), "tests": " ".join(context.get("tests", [])), "form": output})
+        "base": context.get("base", ""), "tests": " ".join(context.get("tests", [])), "form": output,
+        "run_tests": RUN_TESTS, "scorecard": scorecard_line(root, name)})
     tool = role["tool"]
     command = crew["commands"].get(tool) or role.get("command") or cfg["roles"]["reviewer"]["command"]
     template = {"command": command,
                 "tools": agent["sandbox"] if tool == "codex" else agent["tools"], "deny": []}
     if tool == "codex":
         template["tools"] = [agent["sandbox"]]
-    command = role_command(template, {"model": role["model"], "effort": agent["effort"], "no_network": NO_NETWORK,
-                                      "max_turns": cfg["crew_max_turns"], "max_budget": cfg["max_budget_crew_usd"]})
+    template["tools"] = [RUN_TESTS_RULE if t == "{run_tests}" else t for t in template["tools"]]
+    command = with_read_denies(role_command(template, {
+        "model": role["model"], "effort": agent["effort"], "no_network": NO_NETWORK,
+        "max_turns": cfg["crew_max_turns"], "max_budget": cfg["max_budget_crew_usd"]}))
     env = claude_env(f"crew:{name}")
     env["FACTORY_CREW_OUTPUT"] = str(output)
     receipt = {"model": role["model"], "tool": tool, "prompt_sha": hashlib.sha256(prompt_path.read_bytes()).hexdigest()[:12]}
@@ -257,20 +295,38 @@ def planning(root, row):
     return "planned"
 
 
+def rerun_evidence(root, tests):
+    """Run the named test ids (never a command) in a scratch worktree of HEAD, fenced like every test run.
+    True only when every named test passed."""
+    from testrun import TestTimeout, run as run_tests
+    with scratch_worktree(root) as folder:
+        try:
+            _, records, _, _ = run_tests(folder, tests)
+        except TestTimeout:
+            return False
+    return bool(tests) and all(records.get(t, {}).get("outcome") == "passed" for t in tests)
+
+
 def before_cut(root, row, row_text, run=subprocess.run):
-    """Planning first; then Sweeper Sid (a done verdict closes the row only after code re-runs its evidence
-    command) and the plan coverage auditor."""
+    """Planning first; then Sweeper Sid and the plan coverage auditor. A "done" verdict closes the row only when
+    code re-runs the test ids Sweeper Sid named and they pass. A done verdict with other evidence (an old commit,
+    a duplicate row) goes to a person as a card: no model ever hands the factory a command to run."""
+    from asks import decide
     from tick import mark_row
     plan = planning(root, row)
     data, verdict = run_agent(root, "sweeper-sid", "before_cut", row, {"row": row, "text": row_text}, run=run)
     if verdict == "done":
-        check = subprocess.run(["bash", "-c", data["evidence_command"]], cwd=root, capture_output=True, text=True, timeout=600)
-        if check.returncode == 0:
+        tests = data.get("evidence_tests") or []
+        if tests and rerun_evidence(root, tests):
             mark_row(root, row, f"done (already done: {data['criterion']})")
             record(root, "sweeper-sid", "evidence_rerun", row, "confirmed", {})
             return {"row": row, "already_done": True, "criterion": data["criterion"], "planning": plan}
-        record(root, "sweeper-sid", "evidence_rerun", row, "refuted", {}, ok=False,
-               note=f"exit {check.returncode}: {check.stdout[-200:]}")
+        if tests:
+            record(root, "sweeper-sid", "evidence_rerun", row, "refuted", {}, ok=False, note=" ".join(tests)[:200])
+        else:
+            decide(root, f"close-{row}", f"Sweeper Sid says row {row} is already done ({data['criterion']}): "
+                   f"{' '.join(str(data.get('evidence', '')).split())[:200]}. Close it?",
+                   "Check the evidence yourself; close the row in plan/backlog.md only if it holds.")
     _, coverage = run_agent(root, "plan-coverage-auditor", "before_cut", row,
                             {"row": row, "text": row_text, "plan_hash": plan_hash(root)}, run=run)
     record(root, "plan-coverage-auditor", "plan_hash", row, plan_hash(root), {})
@@ -291,6 +347,15 @@ def cut_refusal(root, row):
     if stamp[-1]["verdict"] != plan_hash(root):
         return f"the plan changed since {row} was audited; run `factory crew before-cut {row}` again"
     return None
+
+
+def scorecard_line(root, name):
+    """The one line an agent sees about its own record: counted by code, no model-written text."""
+    card = next((c for c in scorecard(root) if c["agent"] == name), None)
+    if card is None:
+        return "no runs yet"
+    verdicts = ", ".join(f"{k} {v}" for k, v in sorted(card["verdicts"].items()))
+    return f"{card['runs']} runs ({verdicts or 'none'}), {card['cookies']} cookies, {card['slaps']} slaps"
 
 
 def scorecard(root):

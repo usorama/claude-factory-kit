@@ -16,7 +16,7 @@ import tempfile
 from pathlib import Path
 
 from common import git
-from testrun import run
+from testrun import TestTimeout, run
 
 COPY_SKIP = (".git", "var", "__pycache__", ".venv", "venv", "node_modules", ".tox", ".mypy_cache", ".pytest_cache")
 
@@ -60,29 +60,36 @@ def added_lines(worktree, base, name):
 
 
 def survivors(worktree, base, files, tests, timeout=300):
+    """Copy the work folder once, then try each mutant in that copy and put the original file back after it
+    (one copy per unit, not one per mutant)."""
     worktree = Path(worktree)
     report = {"checks": 0, "survivors": [], "covered": []}
-    for name in files:
-        source = (worktree / name).read_text()
-        added = added_lines(worktree, base, name)
-        source_lines = source.splitlines()
-        for line, mutated, description in mutants(source):
-            if added is not None and line not in added:
-                continue
-            if "# covered:" in source_lines[line - 1]:
-                report["covered"].append(f"{name}:{line} {source_lines[line - 1].split('# covered:', 1)[1].strip()}")
-                continue
-            report["checks"] += 1
-            with tempfile.TemporaryDirectory(prefix="factory-mutant-") as scratch:
-                copy = Path(scratch) / "tree"
-                shutil.copytree(worktree, copy, ignore=shutil.ignore_patterns(*COPY_SKIP))
+    with tempfile.TemporaryDirectory(prefix="factory-mutant-") as scratch:
+        copy = Path(scratch) / "tree"
+        copied = False
+        for name in files:
+            source = (worktree / name).read_text()
+            added = added_lines(worktree, base, name)
+            source_lines = source.splitlines()
+            for line, mutated, description in mutants(source):
+                if added is not None and line not in added:
+                    continue
+                if "# covered:" in source_lines[line - 1]:
+                    report["covered"].append(f"{name}:{line} {source_lines[line - 1].split('# covered:', 1)[1].strip()}")
+                    continue
+                report["checks"] += 1
+                if not copied:
+                    shutil.copytree(worktree, copy, ignore=shutil.ignore_patterns(*COPY_SKIP))
+                    copied = True
                 (copy / name).write_text(mutated)
                 try:
                     code = run(copy, tests, timeout=timeout)[0]
-                except subprocess.TimeoutExpired:
+                except TestTimeout:
                     code = "timeout"  # counted as caught
-            if code in (0, 5):
-                report["survivors"].append(f"{name}:{line} ({description})")
+                finally:
+                    (copy / name).write_text(source)  # the next mutant starts from the original
+                if code in (0, 5):
+                    report["survivors"].append(f"{name}:{line} ({description})")
     return report
 
 

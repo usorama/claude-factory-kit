@@ -31,7 +31,7 @@ form = "diff"
 check = "build_check"
 output = "codex-jsonl"
 tools = ["workspace-write"]
-command = ["codex", "exec", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "-s", "{tools}", "--ephemeral", "--json", "-"]
+command = ["codex", "exec", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "-c", "shell_environment_policy.inherit=\"core\"", "-s", "{tools}", "--ephemeral", "--json", "-"]
 
 [roles.reviewer]
 tool = "codex"
@@ -43,7 +43,7 @@ form = "review-json"
 check = "review_form"
 output = "codex-jsonl"
 tools = ["workspace-write"]
-command = ["codex", "exec", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "-s", "{tools}", "--ephemeral", "--json", "-"]
+command = ["codex", "exec", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "-c", "shell_environment_policy.inherit=\"core\"", "-s", "{tools}", "--ephemeral", "--json", "-"]
 
 [roles.researcher]
 tool = "codex"

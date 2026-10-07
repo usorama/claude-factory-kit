@@ -143,7 +143,21 @@ def test_pr_merge_opens_a_pull_request_with_the_review_verdict_and_merges_it_its
 
 def test_the_dashboard_shows_the_landing_mode_in_use(tmp_path):
     roles_project(tmp_path)
-    (tmp_path / "var/factory").mkdir(parents=True)
+    (tmp_path / "var/factory").mkdir(parents=True, exist_ok=True)
     assert metrics.now_section(tmp_path)["landing"] == {"mode": "direct", "why": "default for a non-GitHub origin (none)"}
     (tmp_path / "factory.toml").write_text('landing = "pr_merge"\n' + (tmp_path / "factory.toml").read_text())
     assert metrics.now_section(tmp_path)["landing"]["mode"] == "pr_merge"
+
+
+def test_the_dashboard_stays_local_unless_factory_toml_allows_publishing(tmp_path):
+    import build_dashboard
+    roles_project(tmp_path)
+    (tmp_path / "factory").mkdir(exist_ok=True)
+    for name in ("common.py", "tomlw.py"):
+        (tmp_path / "factory" / name).write_text((Path(__file__).resolve().parents[1] / "factory" / name).read_text())
+    (tmp_path / "factory/presets").mkdir()
+    (tmp_path / "factory/presets/claude-only.toml").write_text(
+        (Path(__file__).resolve().parents[1] / "factory/presets/claude-only.toml").read_text())
+    assert build_dashboard.publish_setting(tmp_path) == "local"
+    (tmp_path / "factory.toml").write_text('dashboard_publish = "artifact"\n' + (tmp_path / "factory.toml").read_text())
+    assert build_dashboard.publish_setting(tmp_path) == "artifact"

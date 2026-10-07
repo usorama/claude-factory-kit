@@ -29,7 +29,7 @@ def days(root):
     lessons = read_jsonl(root / ".ai/lessons.jsonl")
     out = defaultdict(lambda: {"landed": [], "first_checks": [], "splits": 0, "hand": [], "idle": Counter(),
                                "ticks": 0, "skipped_ticks": 0, "cost_usd": 0.0, "lessons": [], "decisions": [],
-                               "refusals": [], "defects": [], "planning_skipped": []})
+                               "refusals": [], "defects": [], "planning_skipped": [], "approvals": []})
     enqueued = {e["unit"]: e["at"] for e in events if e.get("event") == "enqueue"}
     for unit, event in _first(events, "check").items():
         out[event["at"][:10]]["first_checks"].append(bool(event["ok"]))
@@ -48,7 +48,9 @@ def days(root):
         if event.get("to") == "needs_split":
             day["splits"] += 1
         if event.get("event") == "hand":
-            day["hand"].append({"unit": event["unit"], "reason": event["reason"], "note": event["note"]})
+            day["hand"].append({"unit": event.get("unit", ""), "reason": event.get("reason", ""), "note": event.get("note", "")})
+        if event.get("event") == "approved":
+            day["approvals"].append(event.get("note", ""))
     for paid in read_jsonl(var(root) / "spend.jsonl"):  # one line per model run: never counted twice
         if isinstance(paid.get("cost_usd"), (int, float)):
             out[paid["at"][:10]]["cost_usd"] += paid["cost_usd"]
@@ -80,6 +82,7 @@ def markdown(day):
                  for u in day["landed"]),
              f"- Refusals: {len(day['refusals'])}" + "".join(
                  f"\n  - {r['unit']} at {r['step']}: {r['why']}" for r in day["refusals"]),
+             "- Rule, prompt or budget changes a person approved: " + ("; ".join(day["approvals"]) or "none"),
              "- Rows cut without a planning matrix (planning skipped): " + (", ".join(day["planning_skipped"]) or "none"),
              f"- Escaped defects: {len(day['defects'])}" + "".join(f"\n  - {d['unit']}: {d['note']}" for d in day["defects"]),
              f"- First-try green (first build check passed): {day['first_try_green']}",

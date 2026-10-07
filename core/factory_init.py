@@ -4,6 +4,10 @@
   factory init --plan  [--project DIR] [--preset P] [--adapter A]     show what would happen
   factory init --apply [--project DIR] [--preset P] [--adapter A] [--overwrite PATH ...]
 
+Footprint: personal (the default) changes no tracked file; the factory's files are hidden through
+.git/info/exclude, settings go to .claude/settings.local.json and the rules import to CLAUDE.local.md.
+shared writes .claude/settings.json, CLAUDE.md, .gitignore and a pre-commit hook for the whole team.
+  factory init --apply --update     replace every kit file that changed (after /plugin update or git pull)
 Presets (roles file factory.toml): claude-only (default, no Codex needed), codex-only, claude-codex,
 generic (fill in your own commands). Adapters: claude-code (CLAUDE.md imports the rules; agent files
 in .claude/agents), codex (a managed block in AGENTS.md; profiles in .codex/profiles), generic
@@ -35,11 +39,18 @@ PROJECT_OWNED = {"state.md", "plan/backlog.md", "factory.toml", ".ai/lessons.jso
     f".ai/prompts/crew/{p.name}" for p in (CORE / "templates/prompts/crew").glob("*.md")}
 IMPORT_LINE = "@.ai/factory-agents.md"
 BEGIN, END = "<!-- factory:begin (managed by factory init; edit .ai/factory-agents.md) -->", "<!-- factory:end -->"
-IGNORE_LINES = ("var/", "__pycache__/", "*.pyc", ".sabotage-tmp/", "*.factory-new", ".factory-review.json", ".factory-crew-*.json",
-                "factory.toml.proposed")
+IGNORE_LINES = ("var/factory/", "__pycache__/", "*.pyc", ".sabotage-tmp/", "*.factory-new", ".factory-review.json",
+                ".factory-crew-*.json", "factory.toml.proposed")
+FOOTPRINTS = ("personal", "shared")
+# Personal setup (the default): every path the factory creates is hidden through .git/info/exclude, a file that
+# stays on this machine. Nothing tracked changes, so teammates' tools and the repo's history stay as they were.
+PERSONAL_EXCLUDE = ("factory/", ".ai/", "crew/", "dashboard/", "var/factory/", "factory.toml", "factory.toml.proposed",
+                    ".factory-clone", ".claude/settings.local.json", "CLAUDE.local.md", ".codex/profiles/",
+                    "*.factory-new", ".factory-review.json", ".factory-crew-*.json", ".sabotage-tmp/")
+PERSONAL_IF_NEW = ("state.md", "plan/")
 
 
-def items(preset="claude-only", adapter="claude-code"):
+def items(preset="claude-only", adapter="claude-code", footprint="personal"):
     """(source in the kit, target in the project)."""
     found = [(p, f"factory/{p.name}") for p in sorted((CORE / "factory").iterdir())
              if p.is_file() and p.suffix in (".py", ".sh")]
@@ -50,8 +61,8 @@ def items(preset="claude-only", adapter="claude-code"):
              ("factory-agents.md", ".ai/factory-agents.md"), ("../../RULES.md", ".ai/factory-rules.md"),
              ("../../PRINCIPLES.md", ".ai/factory-principles.md"), ("defect-library.md", ".ai/defect-library.md"),
              ("state.md", "state.md"), ("plan/backlog.md", "plan/backlog.md"), ("lessons.jsonl", ".ai/lessons.jsonl")]
-    if adapter == "claude-code":
-        pairs.append(("claude/settings.json", ".claude/settings.json"))
+    if adapter == "claude-code":  # personal: the git-ignored local settings file, never the team's shared one
+        pairs.append(("claude/settings.json", ".claude/settings.json" if footprint == "shared" else ".claude/settings.local.json"))
     found += [(templates / src, dst) for src, dst in pairs]
     found += [(p, f".ai/prompts/crew/{p.name}") for p in sorted((CORE / "templates/prompts/crew").glob("*.md"))]
     found += [(CORE / "factory/crew.toml", "factory/crew.toml")]
@@ -62,14 +73,39 @@ def items(preset="claude-only", adapter="claude-code"):
     return found
 
 
-def plan(project, preset="claude-only", adapter="claude-code"):
+def tracked(project, path):
+    return subprocess.run(["git", "ls-files", "--error-unmatch", path], cwd=project, capture_output=True).returncode == 0
+
+
+def git_path(project, name):
+    out = subprocess.run(["git", "rev-parse", "--git-path", name], cwd=project, capture_output=True, text=True)
+    return (project / out.stdout.strip()) if out.returncode == 0 else None
+
+
+def exclude(project, lines):
+    """Add lines to .git/info/exclude (shared by all worktrees of this clone, never pushed)."""
+    path = git_path(project, "info/exclude")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    old = path.read_text().splitlines() if path.exists() else []
+    new = [line for line in lines if line not in old]
+    if new:
+        path.write_text("\n".join(old + ["# factory kit (personal setup)", *new]) + "\n")
+    return new
+
+
+def plan(project, preset="claude-only", adapter="claude-code", footprint="personal"):
     if preset not in PRESETS or adapter not in ADAPTERS:
         raise ValueError(f"preset is one of {', '.join(PRESETS)}; adapter is one of {', '.join(ADAPTERS)}")
+    if footprint not in FOOTPRINTS:
+        raise ValueError(f"footprint is one of {', '.join(FOOTPRINTS)}")
     rows = []
-    for source, target in items(preset, adapter):
+    for source, target in items(preset, adapter, footprint):
         if not source.is_file():
             raise FileNotFoundError(f"the kit is missing {source.relative_to(CORE.parent)}")
         path = project / target
+        if footprint == "personal" and target not in PROJECT_OWNED and tracked(project, target):
+            raise ValueError(f"{target} is tracked by the team's repository; a personal setup never changes tracked "
+                             "files. Use --footprint shared only if the team agreed, or move that file first.")
         action = ("create" if not path.exists() else "same" if filecmp.cmp(source, path, shallow=False)
                   else "keep (project-owned)" if target in PROJECT_OWNED else "differs")
         rows.append({"target": target, "action": action})
@@ -88,8 +124,16 @@ def managed_block(project, name, text):
     path.write_text(new)
 
 
-def apply(project, overwrite=(), preset="claude-only", adapter="claude-code", probe_report=None):
+def apply(project, overwrite=(), preset="claude-only", adapter="claude-code", probe_report=None, footprint="personal",
+          factory_clone=False, update=False):
     done = []
+    if footprint == "personal":
+        hidden = exclude(project, [*PERSONAL_EXCLUDE, *[p for p in PERSONAL_IF_NEW if not tracked(project, p.rstrip("/"))]])
+        done.append("personal setup: nothing tracked changes; factory files are hidden in .git/info/exclude"
+                    + (f" ({len(hidden)} new lines)" if hidden else ""))
+    if factory_clone:
+        (project / ".factory-clone").write_text("This clone belongs to the factory: the clock runs only here.\n")
+        done.append("marked this folder as the factory's own clone (.factory-clone)")
     if not (project / "factory.toml").exists():
         import probe
         report = probe_report or probe.probe()
@@ -111,13 +155,14 @@ def apply(project, overwrite=(), preset="claude-only", adapter="claude-code", pr
                     probe_cost += cost
         if probe_cost:
             done.append(f"model probe cost: ${round(probe_cost, 4)} (recorded in the spend ledger)")
-        (project / "factory.toml").write_text(text)
+        (project / "factory.toml").write_text(f'footprint = "{footprint}"\n' + text)
         done += [f"role {r['role']}: {r['tool']}:{r['model']} ({r['why']})" for r in rows]
         done += probe.cost_summary(tomllib.loads(text))
-    for (source, target), row in zip(items(preset, adapter), plan(project, preset, adapter)):
+    for (source, target), row in zip(items(preset, adapter, footprint), plan(project, preset, adapter, footprint)):
         path = project / target
         path.parent.mkdir(parents=True, exist_ok=True)
-        if row["action"] == "create" or target in overwrite:
+        refresh = update and row["action"] == "differs"  # --update replaces every kit file that is not project-owned
+        if row["action"] == "create" or target in overwrite or refresh:
             shutil.copy2(source, path)
             done.append(f"wrote {target}")
         elif row["action"] == "differs":
@@ -127,35 +172,44 @@ def apply(project, overwrite=(), preset="claude-only", adapter="claude-code", pr
         script.chmod(0o755)
     (project / "var/factory/dashboard").mkdir(parents=True, exist_ok=True)
     (project / "factory/VERSION").write_text((CORE.parent / "VERSION").read_text())
+    (project / "factory/KIT").write_text(str(CORE.parent) + "\n")  # where the kit lives, for the update check
     rules = (project / ".ai/factory-agents.md").read_text()
-    if adapter == "claude-code":
-        claude_md = project / "CLAUDE.md"
+    if adapter == "claude-code":  # personal: the person's own CLAUDE.local.md; shared: the team's CLAUDE.md
+        claude_md = project / ("CLAUDE.md" if footprint == "shared" else "CLAUDE.local.md")
         text = claude_md.read_text() if claude_md.exists() else ""
         if IMPORT_LINE not in text:
             claude_md.write_text(text + ("\n" if text and not text.endswith("\n") else "") +
                                  f"\n# Factory rules (from the factory kit)\n{IMPORT_LINE}\n")
-            done.append("CLAUDE.md imports .ai/factory-agents.md")
-    else:
+            done.append(f"{claude_md.name} imports .ai/factory-agents.md")
+    elif footprint == "shared":
         managed_block(project, "AGENTS.md", rules)
         done.append("AGENTS.md carries the factory rules in a managed block")
+    else:
+        done.append("personal setup: AGENTS.md is the team's file and was not changed; the factory's rules are in "
+                    ".ai/factory-agents.md, and the chief launcher passes them to the session")
     roles = tomllib.loads((project / "factory.toml").read_text())["roles"]
-    done += [f"generated {Path(p).relative_to(project)}" for p in agents_gen.generate_all(project)]
-    for name in tomllib.loads((project / "factory/crew.toml").read_text())["agents"]:
-        memory = project / "crew" / name / "memory.md"
-        if not memory.exists():
-            memory.parent.mkdir(parents=True, exist_ok=True)
-            memory.write_text(f"# {name}: project memory\n\nCode appends one dated line per run that taught something.\n")
-    ignore = project / ".gitignore"
-    lines = ignore.read_text().splitlines() if ignore.exists() else []
-    ignore.write_text("\n".join(lines + [line for line in IGNORE_LINES if line not in lines]) + "\n")
-    hooks = subprocess.run(["git", "rev-parse", "--git-path", "hooks"], cwd=project, capture_output=True, text=True)
-    hook = project / hooks.stdout.strip() / "pre-commit"
-    if hooks.returncode == 0 and not hook.exists():
-        hook.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(CORE / "templates/pre-commit", hook)
-        hook.chmod(0o755)
-        done.append("installed the pre-commit hook")
+    generated = [Path(p).relative_to(project) for p in agents_gen.generate_all(project)]
+    done += [f"generated {p}" for p in generated]
+    if footprint == "personal":
+        exclude(project, [str(p) for p in generated if p.parts[0] == ".claude"])
+    if footprint == "shared":
+        ignore = project / ".gitignore"
+        lines = ignore.read_text().splitlines() if ignore.exists() else []
+        ignore.write_text("\n".join(lines + [line for line in IGNORE_LINES if line not in lines]) + "\n")
+        hooks_path = subprocess.run(["git", "config", "--get", "core.hooksPath"], cwd=project, capture_output=True, text=True)
+        hook = git_path(project, "hooks/pre-commit")
+        if hooks_path.stdout.strip():  # a team hooks folder (husky and the like) is the team's, never the factory's
+            done.append("core.hooksPath is set: the factory's pre-commit check was not installed (add "
+                        "python3 factory/consistency.py --staged to your team hook if wanted)")
+        elif hook and not hook.exists():
+            hook.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(CORE / "templates/pre-commit", hook)
+            hook.chmod(0o755)
+            done.append("installed the pre-commit hook")
     sys.path.insert(0, str(project / "factory"))
+    import protect
+    protect.snapshot(project)
+    done.append("protected files recorded: a change to factory/, factory.toml, prompts or rules waits for factory approve")
     import common
     import land
     host, modes = land.host_modes(project)
@@ -188,15 +242,25 @@ def main(argv=None):
     mode.add_argument("--apply", action="store_true")
     parser.add_argument("--overwrite", nargs="*", default=[])
     parser.add_argument("--probe-file", type=Path, help="use a saved probe report instead of calling the tools")
+    parser.add_argument("--footprint", default="personal", choices=FOOTPRINTS,
+                        help="personal (default): nothing tracked changes; shared: the team's repo gets the factory files")
+    parser.add_argument("--factory-clone", action="store_true",
+                        help="mark this folder as the factory's own clone (.factory-clone); the clock runs only there")
+    parser.add_argument("--update", action="store_true",
+                        help="replace every kit file that changed (factory scripts, presets, templates), keep project-owned files")
     args = parser.parse_args(argv)
     project = args.project.resolve()
     if not (project / ".git").exists():
         print(f"factory init: {project} is not the top of a git repo", file=sys.stderr)
         return 2
     try:
-        result = (plan(project, args.preset, args.adapter) if args.plan
+        footprint = args.footprint
+        if (project / "factory.toml").exists() and "--footprint" not in (argv or sys.argv):
+            footprint = tomllib.loads((project / "factory.toml").read_text()).get("footprint", "personal")
+        result = (plan(project, args.preset, args.adapter, footprint) if args.plan
                   else apply(project, set(args.overwrite), args.preset, args.adapter,
-                             json.loads(args.probe_file.read_text()) if args.probe_file else None))
+                             json.loads(args.probe_file.read_text()) if args.probe_file else None, footprint,
+                             args.factory_clone, args.update))
     except (FileNotFoundError, ValueError) as error:
         print(f"factory init: {error}", file=sys.stderr)
         return 2

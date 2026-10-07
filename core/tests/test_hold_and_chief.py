@@ -25,7 +25,7 @@ def unit_repo(make_repo):
     root = make_repo({"tests/test_unit.py": tests, "tests/test_other.py": GREEN, "src/__init__.py": "",
                       "plan/backlog.md": "| ID | Status |\n|---|---|\n| R1 | building |\n", **unit_files()})
     roles_project(root)
-    (root / "var/factory").mkdir(parents=True)
+    (root / "var/factory").mkdir(parents=True, exist_ok=True)
     write_queue(root, {"units": [{"unit": ".ai/units/R1/1.json", "worktree": str(root), "state": "red",
                                   "attempts": 0, "log": [], "estimate_minutes": 10}]})
     return root
@@ -141,3 +141,26 @@ def test_the_generated_chief_agent_pins_an_exact_model_and_the_launcher_starts_r
     (tmp_path / "factory.toml").write_text((tmp_path / "factory.toml").read_text().replace('"claude-sonnet-5"', '"sonnet"'))
     refused = subprocess.run(["bash", "factory/chief.sh", "--print"], cwd=tmp_path, capture_output=True, text=True)
     assert refused.returncode != 0 and "refusing to start" in refused.stderr
+
+
+def test_prune_keeps_a_folder_with_uncommitted_work_and_a_parked_units_branch(make_repo):
+    from conftest import unit_worktree
+    root = make_repo({"tests/test_ok.py": GREEN})
+    landed, parked, dirty = unit_worktree(root, "R1", 1), unit_worktree(root, "R2", 1), unit_worktree(root, "R3", 1)
+    (dirty / "notes.txt").write_text("a person's work in progress")
+    (root / "var/factory").mkdir(parents=True, exist_ok=True)
+    write_queue(root, {"units": [{"unit": f".ai/units/{r}/1.json", "worktree": str(w), "state": s, "attempts": 0, "log": []}
+                                 for r, w, s in (("R1", landed, "landed"), ("R2", parked, "parked"), ("R3", dirty, "landed"))]})
+    result = tick.prune(root)
+    assert not landed.exists() and not parked.exists() and dirty.exists()
+    assert (dirty / "notes.txt").read_text() == "a person's work in progress" and "uncommitted work" in result["kept"][0]
+    branches = git(root, "branch", "--list", "unit/*")
+    assert "unit/R2/1" in branches and "unit/R1/1" not in branches  # parked branch kept, merged landed branch deleted
+
+
+def test_a_sabotage_copy_is_made_only_under_the_scratch_folder(make_repo, tmp_path):
+    root = make_repo({"x.txt": "x"})
+    with pytest.raises(tick.Refused, match="must be under"):
+        tick.verify_checkout(root, ".ai/units/R1/1.json", tmp_path / "sabotage-R1")
+    with pytest.raises(tick.Refused, match="has not landed"):  # the default folder passes the place check
+        tick.verify_checkout(root, ".ai/units/R1/1.json")

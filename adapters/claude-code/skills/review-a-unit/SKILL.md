@@ -6,8 +6,10 @@ description: Verify a factory claim by hand - re-run a unit's named test and nam
 Never trust a report; re-run its proof.
 
 1. In the unit's work folder, run the named test: `python3 -m pytest -q <named test>`. It must pass.
-2. Do the named sabotage on a copy: `cp -r . /tmp/sabotage-<unit> && cd /tmp/sabotage-<unit>`,
-   break the code exactly as the brief says, run the named test: it must fail. Remove the copy.
+2. Do the named sabotage on a copy, never in /tmp (on a shared machine others can read it). A landed unit:
+   `python3 factory/tick.py verify-checkout <unit>` makes the copy under var/factory/scratch. A unit still in its work
+   folder: copy that folder to `<repo>/var/factory/scratch/sabotage-<unit>`. In the copy, break the code exactly as the
+   brief says and run the named test: it must fail. Remove the copy.
 3. For a second independent review, never start a reviewer yourself and never pick a model: send the unit back to
    review with `python3 factory/tick.py set <unit> checked --reason other --note "second review: <why>"`. The clock
    runs the pinned reviewer (and Lockjaw or Thomasina when their triggers match).

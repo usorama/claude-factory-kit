@@ -1,7 +1,7 @@
 {
   "name": "factory-kit",
   "owner": {
-    "name": "<owner>"
+    "name": "Umasankr Udhya"
   },
   "description": "A Claude-Code-only software factory: small units with failing tests, a 5-minute clock, independent review, deterministic gates.",
   "plugins": [
@@ -9,7 +9,8 @@
       "name": "factory",
       "source": "./",
       "description": "Build internal tools with a clock-driven factory: cut units, Sonnet builds, Opus reviews in a fresh session, programs check every step, a dashboard shows it all.",
-      "category": "development"
+      "category": "development",
+      "license": "Apache-2.0"
     }
   ]
 }

@@ -45,7 +45,7 @@ def test_the_probe_maps_requirements_to_the_models_that_answered(tmp_path):
 def test_the_probe_counts_only_models_that_really_answered(tmp_path):
     fakes = CORE / "sample/fakes"
     run = lambda cmd, **kw: subprocess.run([str(fakes / cmd[0]), *cmd[1:]], env={"PATH": "/usr/bin:/bin",
-                                           "FAKE_MODELS": "claude-sonnet-5,gpt-6-luna"}, **kw)
+                                           "FACTORY_FAKE_MODELS": "claude-sonnet-5,gpt-6-luna"}, **kw)
     report = probe.probe(which=lambda name: True, run=run)
     assert report["tools"]["claude"]["answered"] == ["claude-sonnet-5"]
     assert report["tools"]["codex"]["answered"] == ["gpt-6-luna"]
@@ -130,22 +130,39 @@ def crew_project(make_repo, sweep):
     return root, run
 
 
-def test_a_done_sweep_closes_the_row_only_after_code_reruns_its_evidence(make_repo):
-    failing = {"row": "R1", "verdict": "done", "criterion": "C3", "evidence": "x", "evidence_command": "exit 3"}
-    root, run = crew_project(make_repo, failing)
+def test_a_model_never_hands_the_factory_a_command_and_named_tests_run_fenced_in_a_scratch_worktree(make_repo, tmp_path):
+    marker = tmp_path / "shell-ran.txt"
+    injected = {"row": "R1", "verdict": "done", "criterion": "C3", "evidence": "x",
+                "evidence_command": f"id > {marker}", "evidence_tests": []}
+    root, run = crew_project(make_repo, injected)  # the reviewer's proof: a command in the answer
+    with pytest.raises(crew.CrewRefused, match="may not hand the factory a command"):
+        crew.before_cut(root, "R1", "| R1 | building |", run=run)
+    assert not marker.exists() and tick.backlog(root)["R1"] == "building"
+    with pytest.raises(crew.CrewRefused, match="evidence_tests must be"):
+        crew.check_form("sweep", {"verdict": "done", "criterion": "C3", "evidence_tests": ["tests/x.py; id"]}, {})
+
+    probe = ("import os, pathlib\ndef test_ok():\n    pathlib.Path('ran-in.txt').write_text(os.getcwd())\n"
+             "def test_broken():\n    assert False\n")
+    for tests, done in ((["tests/test_ok.py::test_broken"], False), (["tests/test_ok.py::test_ok"], True)):
+        name = "pass" if done else "fail"
+        root = make_repo({"plan/backlog.md": "| ID | Status |\n|---|---|\n| R1 | building |\n", "tests/test_ok.py": probe,
+                          "plan/slice-matrix.json": plan_matrix("R1")}, name)
+        roles_project(root)
+        _, run = crew_project(lambda files: make_repo(files, f"unused-{name}"), {
+            "row": "R1", "verdict": "done", "criterion": "C3", "evidence": "x", "evidence_tests": tests})
+        assert crew.before_cut(root, "R1", "| R1 | building |", run=run)["already_done"] is done
+        assert tick.backlog(root)["R1"].startswith("done") is done
+        assert not (root / "ran-in.txt").exists()  # the tests ran in a scratch worktree, not the live checkout
+
+    root, run = crew_project(lambda files: make_repo(files, "other-evidence"), {
+        "row": "R1", "verdict": "done", "criterion": "C2", "evidence": "commit abc fixed it", "evidence_tests": []})
     assert crew.before_cut(root, "R1", "| R1 | building |", run=run)["already_done"] is False
-    assert tick.backlog(root)["R1"] == "building"
-    passing = dict(failing, evidence_command="python3 -m pytest -q tests/test_ok.py")
-    root2, run2 = crew_project(lambda files: make_repo(files, "second"), passing)
-    assert crew.before_cut(root2, "R1", "| R1 | building |", run=run2)["already_done"] is True
-    assert tick.backlog(root2)["R1"].startswith("done")
-    with pytest.raises(crew.CrewRefused, match="evidence_command"):
-        crew.check_form("sweep", dict(failing, evidence_command=""), {})
+    assert (common.var(root) / "asks/DEC-close-R1.md").exists()  # a person decides
 
 
 def test_a_unit_is_queued_only_after_the_sweep_and_a_coverage_audit_of_the_current_plan(make_repo):
     root, run = crew_project(make_repo, {"row": "R1", "verdict": "not_done", "criterion": "NONE", "evidence": "x",
-                                         "evidence_command": ""})
+                                         "evidence_tests": []})
     assert "before-cut R1" in crew.cut_refusal(root, "R1")
     crew.before_cut(root, "R1", "| R1 | building |", run=run)
     assert crew.cut_refusal(root, "R1") is None
@@ -192,12 +209,15 @@ def test_research_and_summary_forms_are_checked_by_code():
         research_check.check_summary("# Day\nall good")
 
 
-def test_review_notes_become_backlog_rows_and_never_block(tmp_path):
+def test_review_notes_go_to_var_with_one_backlog_row_per_unit(tmp_path):
     (tmp_path / "plan").mkdir()
     (tmp_path / "plan/backlog.md").write_text("| ID | Status |\n|---|---|\n")
-    assert review.file_notes(tmp_path, "R1-U1", ["rename x", "a | pipe"]) == 2
-    assert review.file_notes(tmp_path, "R1-U1", ["rename x", "a | pipe"]) == 0
-    assert tick.backlog(tmp_path) == {"N-R1-U1-1": "todo", "N-R1-U1-2": "todo"}
+    notes = ["rename x", "a | pipe", *[f"nit {i}" for i in range(60)]]
+    assert review.file_notes(tmp_path, "R1-U1", notes) == 50
+    assert review.file_notes(tmp_path, "R1-U1", notes) == 0
+    assert tick.backlog(tmp_path) == {"N-R1-U1": "todo"}
+    kept = (tmp_path / "var/factory/notes/R1-U1.md").read_text()
+    assert "- a | pipe" in kept and "12 more notes were dropped" in kept
 
 
 def test_a_plan_that_breaks_the_slice_rules_is_a_finding(tmp_path):
@@ -205,7 +225,7 @@ def test_a_plan_that_breaks_the_slice_rules_is_a_finding(tmp_path):
     (tmp_path / "plan").mkdir()
     bad = (CORE / "planning/slice-matrix/examples/bad-r1-hours.json").read_text()
     (tmp_path / "plan/slice-matrix.json").write_text(bad)
-    (tmp_path / "var/factory").mkdir(parents=True)
+    (tmp_path / "var/factory").mkdir(parents=True, exist_ok=True)
     codes = {f["code"] for f in consistency.check(tmp_path)["findings"]}
     assert "plan_invalid" in codes
     (tmp_path / "plan/slice-matrix.json").write_text((CORE / "planning/slice-matrix/examples/toy.json").read_text())
@@ -232,11 +252,15 @@ def test_promote_lesson_shows_the_exact_text_and_pushes_only_with_the_typed_remo
     git(kit, "add", "-A")
     git(kit, "-c", "user.name=t", "-c", "user.email=t@localhost", "commit", "-q", "-m", "kit")
     git(kit, "remote", "add", "origin", str(bare))
+    git(kit, "config", "user.name", "Test Person")
+    git(kit, "config", "user.email", "person@example.invalid")
     shown = promote_lesson.promote(project, kit, "L1")
-    assert shown["pushed"] is False and shown["remote"] == str(bare) and "acme-internal" in shown["text"]
+    assert shown["pushed"] is False and shown["remote"] == str(bare) and "Name the seam" in shown["text"]
+    assert "acme-internal" not in git(kit, "show", "HEAD") and shown["branch"] == "lesson/l1"  # the name stays home
+    assert git(kit, "log", "-1", "--format=%an") == "Test Person"
     for typed in ("", "https://example.invalid/other.git"):
         with pytest.raises(promote_lesson.PromoteRefused, match="nothing was pushed"):
             promote_lesson.push(project, kit, "L1", typed)
     assert subprocess.run(["git", "ls-remote", str(bare)], capture_output=True, text=True).stdout == ""
     assert promote_lesson.push(project, kit, "L1", str(bare))["pushed"] is True
-    assert "lesson/acme-internal-l1" in subprocess.run(["git", "ls-remote", str(bare)], capture_output=True, text=True).stdout
+    assert "lesson/l1" in subprocess.run(["git", "ls-remote", str(bare)], capture_output=True, text=True).stdout

@@ -1,0 +1,10 @@
+claude-factory-kit, Copyright 2026 Umasankr Udhya
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Ideas this kit builds on (ideas only; no text or code was copied):
+- Matt Pocock's skills (https://github.com/mattpocock/skills, MIT licence): the tracer-bullet approach of
+  to-tickets, used by the slice-matrix planning skill, and the idea of small skills a model loads on demand.
+- Lauren Tan's noodle and pstack (github.com/cursor/plugins, pstack): small units of one function plus its tests,
+  splitting a unit after two failed rounds, and landing each unit as a pull request that merges when green.
+The slice-matrix skill, its checker and every other file are the author's own work.

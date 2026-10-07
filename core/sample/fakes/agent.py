@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Deterministic stand-in for claude -p and codex exec, for the dry run and the tests.
 Answers in the shapes of real runs (core/tests/fixtures/*-real*, *-unknown-model*). Only models in
-$FAKE_MODELS answer; any other model gets the tool's real unknown-model answer (exit 1).
-Role from $FACTORY_ROLE: builder (copies $FAKE_SOLUTIONS), reviewer (runs tests, writes the review form,
+$FACTORY_FAKE_MODELS answer; any other model gets the tool's real unknown-model answer (exit 1).
+Role from $FACTORY_ROLE: builder (copies $FACTORY_FAKE_SOLUTIONS), reviewer (runs tests, writes the review form,
 leaves a sabotage edit for the factory to undo), crew:<name> (writes that agent's form), none (a probe)."""
 import json, os, re, shutil, subprocess, sys
 from pathlib import Path
@@ -11,7 +11,7 @@ tool, args = sys.argv[1], sys.argv[2:]
 flag = "--model" if tool == "claude" else "-m"
 model = args[args.index(flag) + 1] if flag in args else ""
 prompt = sys.stdin.read()
-known = [m for m in os.environ.get("FAKE_MODELS", "").split(",") if m]
+known = [m for m in os.environ.get("FACTORY_FAKE_MODELS", "").split(",") if m]
 
 
 def answer(text, ok=True):
@@ -36,11 +36,12 @@ if model not in known:
 
 role = os.environ.get("FACTORY_ROLE", "")
 unit_match = re.search(r'([^\s"\']*\.ai/units/[^\s"\']+?\.json)', prompt)
-unit = json.loads(Path(unit_match.group(1)).read_text()) if unit_match else {}
+unit_file = Path(unit_match.group(1)) if unit_match else None
+unit = json.loads(unit_file.read_text()) if unit_file and unit_file.exists() else {}
 code = [f for f in unit.get("files", []) if not Path(f).name.startswith("test_")]
 if role == "builder":
     for name in code:
-        source = Path(os.environ["FAKE_SOLUTIONS"]) / name
+        source = Path(os.environ["FACTORY_FAKE_SOLUTIONS"]) / name
         if source.exists():
             Path(name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(source, name)
@@ -59,7 +60,7 @@ if role.startswith("crew:"):
     forms = {
         "sorter-sam": {"row": row, "still_real": True, "evidence": "textkit/ has no words module", "size": "S",
                        "risk_class": "none", "files": ["textkit/words.py"], "done_property": "words are counted", "founder_gated": False},
-        "sweeper-sid": {"row": row, "verdict": "not_done", "criterion": "NONE", "evidence": "no module", "evidence_command": ""},
+        "sweeper-sid": {"row": row, "verdict": "not_done", "criterion": "NONE", "evidence": "no module", "evidence_tests": []},
         "plan-coverage-auditor": {"row": row, "items": [{"item": "count words", "source": "plan/backlog.md:5", "unit": "U1", "status": "COVERED"}],
                                   "dropped": [], "orphaned": []},
         "spec-conformance-auditor": {"row": row, "findings": [{"requirement": "count and title-case", "source": "plan/backlog.md:5",
@@ -72,6 +73,7 @@ if role.startswith("crew:"):
     if name == "quill":
         brief = Path(re.search(r"Write the one file you may write: (\S+?),? with", prompt).group(1))
         test = unit["tests"][0]
+        brief.parent.mkdir(parents=True, exist_ok=True)  # as Claude's Write tool does
         brief.write_text("# Brief by Quill\n\n" + "".join(f"## {n}. Part {n}\n- See the unit file.\n\n" for n in (1, 2, 3, 4, 6, 7, 8))
                          + f"## 5. How to prove it\n- Named test: {test}\n- Named sabotage: remove the refusal; that test goes red.\n")
         forms["quill"] = {"brief": str(brief), "named_test": test}

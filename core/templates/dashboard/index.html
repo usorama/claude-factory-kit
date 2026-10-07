@@ -72,7 +72,7 @@ a { color: var(--accent); }
   <div class="tab" id="metrics"></div>
   <div class="tab" id="workflow">
 <section data-static data-title="Workflow" data-asof="2026-10-07"
-  data-sources="factory/drive.py factory/crew.py factory/crew.toml factory/unit_check.py factory/tick.sh factory/runners.py factory/red_check.py factory/build_check.py factory/review.py factory/land.py factory/tick.py">
+  data-sources="factory/drive.py factory/crew.py factory/crew.toml factory/unit_check.py factory/tick.sh factory/runners.py factory/red_check.py factory/build_check.py factory/review.py factory/land.py factory/tick.py factory/testrun.py factory/protect.py factory/common.py">
     <div class="card">
       <p>One unit is a small piece of work: one behaviour, three to five failing tests, at most three code files.
       A clock runs every five minutes and moves each unit one step. Tap a step.</p>
@@ -93,17 +93,19 @@ a { color: var(--accent); }
       <h3 id="step-red">Red check</h3>
       <p>Each named test must fail because the unit's code is missing, not because the test file is broken. Every other test must pass, except the tests of other units still in the queue, or stopped with an open card. A brief that cites a missing file or a runtime file is refused.</p>
       <h3 id="step-build">Build</h3>
-      <p>The builder role runs with the exact model the install probe pinned. It gets the brief and the unit, may touch only the listed files, and may not change tests. Its time box is twice the estimate. The program commits the work. A rebuild starts again from the cut, with the finding; model time over twice the estimate sends the unit to a split.</p>
+      <p>The builder role runs with the exact model the install probe pinned. It gets the brief and the unit, may touch only the listed files, and may not change tests. It runs tests only through the factory's wrapper, so every run is fenced: no writes outside the work folder, no network, no home folder, no tokens, and a time limit. Its time box is twice the estimate. The program commits the work in your name, through your team's hooks; a refusing hook is a refusal of the unit. A rebuild starts again from the cut, with the finding; model time over twice the estimate sends the unit to a split.</p>
       <h3 id="step-check">Build check</h3>
       <p>Only listed files changed, test files are unchanged, the named tests pass, every new check is protected by a named test (the guard removes each one), and the whole suite passes.</p>
       <h3 id="step-review">Review</h3>
-      <p>Inspector Grumble, the reviewer role, runs on a different model when one answered the probe, else in a fresh session with a different review prompt (shown as weaker). It runs the tests, the suite and the named sabotage, and writes a JSON form. Lockjaw joins on risky files and Thomasina on user-facing surfaces. Code decides the verdict: only a complete finding of a listed kind, inside the unit's files, blocks; every note becomes a backlog row.</p>
+      <p>Inspector Grumble, the reviewer role, runs on a different model when one answered the probe, else in a fresh session with a different review prompt (shown as weaker). It runs the tests, the suite and the named sabotage, and writes a JSON form. Lockjaw joins on risky files and Thomasina on user-facing surfaces. Code decides the verdict: only a complete finding of a listed kind, inside the unit's files, blocks. Notes are kept under var/factory/notes, with one backlog row per unit.</p>
       <h3 id="step-land">Landing</h3>
       <p>The unit's own commits are replayed onto the newest main. The change must equal the reviewed change. The whole suite runs on the merged result. On a GitHub origin the factory never pushes to main itself: it opens a pull request per unit with the review verdict and merges it by its exact head commit, or, when main is protected, GitHub merges it once its rules are met; in pr-only mode people merge it. Only a repo with no GitHub host, or one whose settings name direct explicitly, lands by pushing the tested commit. The clock watches an open pull request until it is merged. Landings go one at a time. The Now tab shows the mode in use.</p>
       <h3 id="step-crew">The crew and stops</h3>
       <p>Every crew agent starts only on its trigger in the crew file, with the model of the role it uses; its answer is a form that code accepts or refuses, and it earns cookies or slaps on the Factory metrics tab. One unit is stopped with hold, which ends its process at once, and returns only through release after its re-cut validates. A row is marked done by code after the conformance and claim checks.</p>
       <h3 id="step-machinery">When the machinery fails</h3>
       <p>A model error, a denied tool, a failed fetch or a failed GitHub call is never the unit's fault and uses no attempt. A usage limit pauses every build and review until it resets; the daily budget does the same and asks the human. Retries are capped, then the unit stops with a card.</p>
+      <h3 id="step-gate">Only a person changes the factory</h3>
+      <p>When the factory's scripts, its settings file, a prompt or a rule file changes, the clock stops and names the files. It runs again after a person reads the change and approves it. The same clock never runs without a git identity, or outside the folder marked as the factory's own clone.</p>
     </div>
 </section>
   </div>

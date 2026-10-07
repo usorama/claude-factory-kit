@@ -16,15 +16,16 @@ Fix the cause; never bypass the gate.
 ## Look at it locally
 Open `var/factory/dashboard/factory-dashboard.html` in a browser. The data is inside the file.
 
-## Publish as a Claude artifact (from the chief of staff session)
-Ask Claude Code: "Publish var/factory/dashboard/factory-dashboard.html as an artifact." Claude uses
-its Artifact tool and returns a private claude.ai link. Share it with your team from claude.ai if
-you want. The page is private until you share it.
+## Publish as a Claude artifact (only if you choose to)
+By default the page stays on this computer: it holds the project's work log (unit names, file names, review
+notes, lessons and costs), and sending that to an outside service is a choice for the person, often one that
+needs a yes at work. To allow it, set `dashboard_publish = "artifact"` in factory.toml. Then ask Claude Code:
+"Publish var/factory/dashboard/factory-dashboard.html as an artifact." It returns a private claude.ai link,
+private until you share it.
 
 ## Refresh
-Run the two build commands again, then ask Claude Code to publish **the same file path** again:
-the Artifact tool updates the same link. The chief of staff does this at the end of each loop and
-after each daily report. The page shows when its data was written and how old the last clock tick
+Run the two build commands again. If publishing is allowed, ask Claude Code to publish **the same file path**
+again: the Artifact tool updates the same link. The page shows when its data was written and how old the last clock tick
 is, so a stale page is visible to anyone who opens it.
 
 ## Change the Workflow tab

@@ -1,7 +1,7 @@
 ---
 description: One pass of the Chief of Staff loop by hand (normally `factory chief` starts the role and its loop) - job tick, or the job you name (cut, verify, stop, review, close, retro, report).
 argument-hint: "[tick|cut <row>|verify <unit>|stop <unit>|review <pr>|close <row>|retro|report]"
-allowed-tools: Bash(python3 factory/*), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/core/cli.py" *), Bash(git status *), Bash(git diff *), Bash(git log *), Bash(git add *), Bash(git commit *), Bash(git worktree *), Bash(date *)
+allowed-tools: Bash(python3 factory/tick.py *), Bash(python3 factory/asks.py *), Bash(python3 factory/lessons.py *), Bash(python3 factory/consistency.py *), Bash(python3 factory/metrics.py *), Bash(python3 factory/daily_report.py *), Bash(python3 factory/staleness_gate.py *), Bash(python3 factory/unit_check.py *), Bash(python3 factory/red_check.py *), Bash(python3 factory/brief_check.py *), Bash(python3 factory/fingerprint.py *), Bash(python3 factory/crew.py *), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/core/cli.py" crew *), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/core/cli.py" tick *), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/core/cli.py" dashboard *), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/core/cli.py" retro *), Bash(python3 "${CLAUDE_PLUGIN_ROOT}/core/cli.py" check *), Bash(git status *), Bash(git diff *), Bash(git log *), Bash(git add *), Bash(git commit *), Bash(git worktree *), Bash(date *)
 ---
 Act as the Chief of Staff: read .ai/prompts/chief-of-staff.v1.md, then run the job "$ARGUMENTS" (default: tick) exactly as
 .ai/prompts/chief-of-staff-jobs.v1.md lists its steps. Never pick or change a model and never start a code-only role

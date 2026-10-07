@@ -1,0 +1,9 @@
+{
+ "_captured": "claude 2.1.290, claude -p --model claude-haiku-4-5 --permission-mode dontAsk, an untrusted git folder, a plain text file in the home folder, Linux x86_64, 2026-10-07",
+ "results": {
+  "--allowedTools Read": "the file was read (its content came back)",
+  "--allowedTools Read --disallowedTools Read(~/<file>)": "not read, 1 permission denial",
+  "--allowedTools Read Grep Glob Bash --disallowedTools Read(~/<file>)": "not read, 1 permission denial"
+ },
+ "conclusion": "A bare Read allow reads any file the user can read. A command-line Read(~/...) deny blocks it, also when Grep, Glob and Bash are allowed."
+}

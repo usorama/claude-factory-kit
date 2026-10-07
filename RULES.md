@@ -19,8 +19,9 @@ checked by the reviewer. Why each rule exists: PRINCIPLES.md.
 
 - Planning is required: `before-cut` refuses a row that is not a slice of a valid `plan/slice-matrix.json`. Only
   `planning = "skip"` in factory.toml lets a row through without one; the skip is logged and named in the daily report.
-- Before a row is cut, run `factory crew before-cut <row>`. Sweeper Sid checks the row is not already done; a "done"
-  verdict closes the row only after code re-runs its evidence command. The plan coverage auditor then maps every
+- Before a row is cut, run `factory crew before-cut <row>`. Sweeper Sid checks the row is not already done. A "done"
+  verdict closes the row only when the test ids Sid names pass when code runs them, fenced, in a scratch worktree.
+  Other evidence (an old commit, a duplicate row) goes to a person as a card. A model never hands the factory a command. The plan coverage auditor then maps every
   deliverable to a unit, and a dropped deliverable blocks the cut. A plan change after the audit blocks it again.
 - A unit (`.ai/units/<row>/<n>.json`) holds one observable behaviour, described in a paragraph under 100 words with
   no code or path and one named sabotage. It names 3 to 5 tests, written `file.py::test_name`, and at most 3 code
@@ -62,8 +63,14 @@ request, or stopped with an open card. Before the check the unit catches up with
 
 ## 5. Build  [factory/runners.py, factory/drive.py]
 
-- The builder role, fresh session, permissions from the roles file, no network where the sandbox works, no commit,
-  no push. Only the listed files; no new or changed tests; only the checks the tests require.
+- The builder role, fresh session, permissions from the roles file, no commit, no push. Only the listed files; no new
+  or changed tests; only the checks the tests require. The builder runs tests only through `factory/run_tests.py`,
+  which fences them (section 15). Its process gets an allow-listed environment (no cloud, GitHub or package tokens)
+  and may not read secret files such as `~/.ssh`, `~/.config/gh` or `.env`. A no-network sandbox for the model process
+  itself is requested through Claude Code's sandbox setting; that part is not yet verified on a real run.
+- Commits: code commits the unit as the person who runs the factory (their git identity, signing settings and
+  hooks). A hook that refuses is a refusal of the unit, with the hook's own message. The clock does not run without a
+  git identity.
 - Time box: twice the estimate, at least 20 minutes. A rebuild starts from the cut and gets the last finding; each
   fix round is a fresh session.
 - Machinery is never the unit's fault: a model error, a tool denial that left no change, a failed fetch or gh call
@@ -94,8 +101,9 @@ removed. Any other failing test refuses it too, with the same tolerance as the r
 - Lockjaw joins when the unit's risk class or files match the risk rules; Thomasina when its files are a user-facing
   surface, and she must drive the running system. A `REJECT` verdict from either blocks the landing.
 - The JSON form: `verdict`, `high` (each with kind, test_or_paragraph_line, file, line, reproduce_command, optional
-  `cut`), `notes`, `suite_result_seen`. Only a complete high finding of a listed kind inside the unit's files blocks;
-  every note and downgraded finding becomes a backlog row automatically.
+  `cut`), `notes`, `suite_result_seen`. Only a complete high finding of a listed kind inside the unit's files blocks.
+  Notes and downgraded findings go word for word to `var/factory/notes/<unit>.md` (at most 50), and the backlog gets
+  one row per unit that points there.
 - Stop after the second refusal or twice the estimate: the unit goes to `needs_split`. There is no third round.
 
 ## 8. Landing  [factory/land.py]
@@ -116,6 +124,7 @@ Landing first catches up with main by replaying the unit's own commits. The chan
 - No mode pushes to the base of a GitHub origin unless factory.toml says `landing = "direct"` explicitly. Otherwise
   code refuses the push and raises a card. `factory init` writes the GitHub choice into factory.toml with its reason
   and prints why. The dashboard's Now tab shows the mode in use. Units land one at a time.
+- A refused push says the server's reason (a protected branch, a hook). Only a moved base waits for the next tick.
 
 ## 9. Stops, holds and cards  [factory/tick.py, factory/asks.py]
 
@@ -125,6 +134,10 @@ Landing first catches up with main by replaying the unit's own commits. The chan
   validates).
 - Decision cards (`DEC-<id>`) are for the human: one question, with a recommendation.
 - Every hand change goes through `tick.py set|hold|release` with a reason; it is logged and counted.
+- `tick.py prune` removes the work folders of landed and parked units. It keeps a folder with uncommitted or
+  untracked work unless given `--force`, deletes a landed unit's branch only when merged, and keeps a parked unit's.
+- A sabotage copy lives only under `var/factory/scratch/` (`tick.py verify-checkout <unit>`), never in a shared
+  folder such as `/tmp`.
 
 ## 10. The crew  [factory/crew.toml, factory/crew.py]
 
@@ -141,8 +154,10 @@ Each agent starts only on its trigger in crew.toml, as listed here.
 - The claim verifier starts on a landed row, and on every done claim, handoff and daily report.
 - The Bookie starts on the daily retro.
 
-Each uses the model of a role and is read-only, except for the one file it writes. It answers in a fixed JSON form
-that code checks, and keeps its memory in `crew/<name>/memory.md` in the project (code appends it). A refused answer (a machinery
+Each uses the model of a role and is read-only, except for the one file it writes. Without a unit work folder it works
+in a scratch worktree, never in the live checkout. It runs tests only through `factory/run_tests.py`. It answers in a
+fixed JSON form that code checks. A `memory_line` it writes is kept in `var/factory/crew/<name>-memory.md` for the
+person and never shown to a later run; an agent sees only its scorecard, which code counts. A refused answer (a machinery
 cause or a broken form) stops at once with one `crew-<agent>-<subject>` card for the chief of staff; the agent does not
 run again on that subject while the card is open. Review-note rows (`N-...`) are not triaged at model cost.
 
@@ -165,25 +180,51 @@ change warns); auto-update is off for the clock user; three skipped ticks are a 
 
 ## 14. Where the factory may run  [factory/common.py folder_problem]
 
-Two optional settings in factory.toml keep the factory out of the wrong folder; both are off by default.
+Two settings in factory.toml keep the factory out of the wrong folder.
 
-- `require_clone_marker = true`: nothing runs unless a `.factory-clone` file is in the folder. The factory then never
-  runs in the folder a person works in.
+- `require_clone_marker` (on by default): nothing runs unless a `.factory-clone` file is in the folder
+  (`factory init --apply --factory-clone` writes it). The factory then never runs in the folder a person works in.
 - `forbidden_paths = ["data/live.db"]`: nothing runs while any of these files exists in the folder, such as a real
   database or a credentials file.
 
 Either guard stops the clock, the runners, the crew and the chief launcher.
 
-## 15. Model-written code runs scrubbed  [factory/testrun.py]
+## 15. Model-written code runs fenced  [factory/testrun.py, factory/run_tests.py]
 
-Every factory test run gets only the `PATH`, locale, `TERM` and `TZ` variables, a temporary `HOME`, no tokens, and no network where
-bubblewrap or sandbox-exec works. The Claude token, if used, lives only in `~/.config/factory/claude-token`.
+Every test run of model-written code is fenced: the red check, the build check, each mutant, the merged suite, and
+the builder's, reviewer's and crew's own runs through `run_tests.py`.
+
+- Environment: only `PATH`, locale, `TERM` and `TZ`, a temporary `HOME`, no tokens.
+- Files, on Linux and the Windows Subsystem for Linux (WSL), through bubblewrap: the disk is read-only, and the home
+  folder and `/tmp` are replaced by empty ones. Only the work folder, a scratch folder and the paths in
+  `sandbox_allow_paths` can be written. macOS uses
+  sandbox-exec with the same intent; it is not yet verified on a Mac.
+- Network: off.
+- Time: a run stops after `test_timeout_minutes` (default 20). The whole process group is killed and the run counts
+  as a refusal.
+When bubblewrap cannot start, the run is not fenced, and the red and build checks say so. The Claude token, if used,
+lives only in `~/.config/factory/claude-token`.
 
 ## 16. Lessons  [factory/lessons.py, core/promote_lesson.py]
 
 Two strikes in seven days make a lesson ready; at most two changes a day; rules grow only by replacing. Local
-lessons live in the project and work at once. A proven lesson (applied, two strikes) is shared with
-`factory promote-lesson`: a local branch on a kit checkout with a version bump and a CHANGELOG entry, and the exact
-text printed. Lesson text can name a project, so pushing it is a separate step a person types
+lessons live in the project and take effect once a person approves the change (section 17). A proven lesson
+(applied, two strikes) is shared with `factory promote-lesson`: a local branch on a kit checkout with a version bump
+and a CHANGELOG entry, and the exact text printed. The project's name stays out unless `--name-project` is given.
+Lesson text can still name a project, so pushing it is a separate step a person types
 (`--push --confirm-remote <the remote URL>`); the slash command never pre-approves it.
 Escaped defects (`tick.py defect`) have a target of zero.
+
+## 17. Only a person changes the factory itself  [factory/protect.py, factory/tick.py, core/check_kit.py]
+
+- Protected: `factory/`, `factory.toml` (roles, models, budget, landing), `.ai/prompts/`, `.ai/factory-rules.md`,
+  `.ai/defect-library.md`, `.ai/factory-agents.md`. Init records them. When any differs from the record, the clock
+  does not run and names the files. `factory approve` shows the change; `factory approve --yes` records it.
+- The chief's settings deny editing protected files, approving, and restarting. No slash command pre-approves
+  `approve`, `restart` or `agents` (which also approves), and the kit check refuses one that does.
+- Setup is personal by default: no file the team tracks changes (the Install section of the kit's `README.md` names the files init writes).
+- Updates: every tick warns while the project's `factory/` is behind the installed kit;
+  `factory init --apply --update` refreshes it.
+- Restart: `factory restart` (a person only) refuses without a chief handoff note under 30 minutes old, or with
+  uncommitted or unpushed work. It updates the harness, restarts the chief's tmux session with `factory/chief.sh`,
+  checks it is alive, logs each step to `var/factory/restart.log`, and never touches the clock.

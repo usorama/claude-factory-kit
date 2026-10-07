@@ -1,5 +1,5 @@
 ---
-description: Set up the factory in this repo - probes the models this machine can use, writes the roles file, rules, state, backlog, lessons, prompts, crew memory and dashboard. Asks before overwriting anything.
+description: Set up the factory in this repo - probes the models this machine can use, writes the roles file, rules, state, backlog, lessons, prompts and dashboard. Asks before overwriting anything.
 argument-hint: "[claude-only|codex-only|claude-codex|generic]"
 allowed-tools: Bash(python3 "${CLAUDE_PLUGIN_ROOT}/core/cli.py" init *), Bash(git status *), Bash(which *)
 ---

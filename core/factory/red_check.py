@@ -19,7 +19,7 @@ from brief_check import BriefRefused, check_brief
 from cited_sources import first_problem
 from research_check import ResearchRefused, check_research
 from common import ACTIVE, STOPPED, key, label, load_unit, read_queue, var
-from testrun import NETWORK_ISOLATION, base_id, failed, run
+from testrun import FILESYSTEM_ISOLATION, NETWORK_ISOLATION, base_id, failed, run
 from unit_check import UnitRefused, check_unit
 
 
@@ -121,7 +121,7 @@ def red_check(unit_path, worktree, tolerated=()):
         raise RedCheckRefused(f"the suite could not run: {output.strip()[-300:]}")
     return {"ok": True, "red": len(names), "tolerated_red": len(set(failed(records)) - set(names)),
             "suite_passed": sum(r["outcome"] == "passed" for r in records.values()),
-            "network_isolation": NETWORK_ISOLATION}
+            "network_isolation": NETWORK_ISOLATION, "filesystem_isolation": FILESYSTEM_ISOLATION}
 
 
 if __name__ == "__main__":

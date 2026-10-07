@@ -12,6 +12,7 @@ Findings (each names its fix):
   queue_short            a row is building and fewer than queue_floor units can move
   position_unreadable    state.md has no 'Updated YYYY-MM-DD HH:MM UTC.' line in its Position block
   position_behind        a unit landed or was corrected by hand after the Position block was written
+  kit_outdated           the project's factory/ copy is older than the kit installed here (factory init --apply --update)
   plan_invalid           plan/slice-matrix.json fails the plan check (rows over 8 h, one layer, no yes/no check, ...)
 Usage: consistency.py [--now ISO]     |     consistency.py --staged   (commit hook: Position time vs clock)
 """
@@ -37,6 +38,39 @@ def position_time(text):
         raise ValueError("state.md Position block needs a line 'Updated YYYY-MM-DD HH:MM UTC.'")
     zone = "+00:00" if match.group(2) == "UTC" else match.group(2)
     return datetime.fromisoformat(f"{match.group(1).replace(' ', 'T')}{zone}")
+
+
+def version_tuple(text):
+    return tuple(int(n) for n in re.findall(r"\d+", str(text))[:3]) or (0,)
+
+
+def installed_kit_version(root):
+    """The newest kit version on this machine: the kit checkout recorded at init (factory/KIT) and any installed
+    Claude Code plugin named factory. None when neither can be read."""
+    found = []
+    kit = Path(root) / "factory/KIT"
+    if kit.exists():
+        version = Path(kit.read_text().strip()) / "VERSION"
+        if version.exists():
+            found.append(version.read_text().strip())
+    plugins = Path.home() / ".claude/plugins/installed_plugins.json"
+    if plugins.exists():
+        try:
+            for name, installs in json.loads(plugins.read_text()).get("plugins", {}).items():
+                if name.split("@")[0] == "factory":
+                    found += [i.get("version", "") for i in installs if i.get("version")]
+        except ValueError:
+            pass
+    return max(found, key=version_tuple) if found else None
+
+
+def kit_outdated(root):
+    """(project version, newer kit version) when the project's factory/ copy is behind the installed kit."""
+    mine = Path(root) / "factory/VERSION"
+    newest = installed_kit_version(root)
+    if mine.exists() and newest and version_tuple(newest) > version_tuple(mine.read_text().strip()):
+        return mine.read_text().strip(), newest
+    return None
 
 
 def plan_problem(matrix):
@@ -103,6 +137,10 @@ def check(root, clock=None):
     if building and moving_total < cfg["queue_floor"]:
         find("queue_short", "queue", f"{moving_total} unit(s) can move while {', '.join(building)} is building.",
              f"Cut units ahead: keep at least {cfg['queue_floor']} in the queue before going idle.")
+    behind = kit_outdated(root)
+    if behind:
+        find("kit_outdated", "factory/", f"This project runs factory {behind[0]}; the kit installed here is {behind[1]}. "
+             "Its fixes do not reach the project by themselves.", "Run: factory init --apply --update")
     matrix = root / "plan/slice-matrix.json"
     if matrix.exists():
         problem = plan_problem(matrix)

@@ -30,6 +30,13 @@ def build(project):
     return project / OUT
 
 
+def publish_setting(project):
+    """'local' (the default: the page stays on this computer) or 'artifact' (factory.toml dashboard_publish)."""
+    sys.path.insert(0, str(project / "factory"))
+    import common
+    return common.config(project)["dashboard_publish"]
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--project", type=Path, default=Path.cwd())

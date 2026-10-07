@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """End-to-end dry run with deterministic fake tools (sample/fakes): no network, no model calls.
 
-Makes a tiny repo with a bare 'origin', installs the factory with `factory init` (the model probe
-runs against the fake claude and codex, which know only $FAKE_MODELS), runs the crew's before-cut
+Makes a tiny repo with a bare 'origin', installs the factory with `factory init` in the default personal setup
+(nothing tracked changes; the run checks that no factory file reaches the origin) and the model probe
+runs against the fake claude and codex, which know only $FACTORY_FAKE_MODELS), runs the crew's before-cut
 check, cuts two units of row W1 (unit 2 on top of unit 1, and without a brief, so Quill writes it),
 runs clock ticks until both land, closes the row through code (conformance and claim checks), runs
 the retro (claim verifier, the Bookie), then builds the dashboard through the staleness gate.
 Usage: python3 sample/dry_run.py [folder] [--preset claude-only|codex-only|claude-codex|generic]
                                  [--landing direct|auto|pr_only] [--models id,id,...]
+                                 [--github OWNER/REPO --landing pr_merge|auto]
+--github runs the landing for real: the origin is that GitHub repository (a private test repo: its main is reset
+to the seed and every other branch deleted), pull requests are opened and merged by the real gh, and commits carry
+your own git identity. Models stay fake.
 Exit 0 when both units landed, main is green, the expected crew ran, and the records agree.
 """
 import json
@@ -39,19 +44,32 @@ def option(name, default):
     return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
 
 
-def main(folder, preset, landing, models):
+def main(folder, preset, landing, models, github=None):
     top = Path(folder or tempfile.mkdtemp(prefix="factory-dry-run-")).resolve()
     top.mkdir(parents=True, exist_ok=True)
     origin, repo = top / "origin.git", top / "work"
-    env = dict(os.environ, PATH=f"{SAMPLE / 'fakes'}{os.pathsep}{os.environ['PATH']}", FAKE_MODELS=models,
-               FAKE_SOLUTIONS=str(SAMPLE / "solutions"), FAKE_GH_LOG=str(top / "fake-gh.jsonl"),
-               GIT_AUTHOR_NAME="dry-run", GIT_AUTHOR_EMAIL="dry-run@localhost",
-               GIT_COMMITTER_NAME="dry-run", GIT_COMMITTER_EMAIL="dry-run@localhost")
-    sh("git", "init", "-q", "--bare", "-b", "main", str(origin), cwd=top)
+    fakes = SAMPLE / "fakes"
+    if github:  # the real gh: fake models only
+        fakes = top / "fakes"
+        shutil.copytree(SAMPLE / "fakes", fakes, ignore=shutil.ignore_patterns("gh", "__pycache__"))
+        origin = f"https://github.com/{github}.git"
+    env = dict(os.environ, PATH=f"{fakes}{os.pathsep}{os.environ['PATH']}", FACTORY_FAKE_MODELS=models,
+               FACTORY_FAKE_SOLUTIONS=str(SAMPLE / "solutions"), FACTORY_FAKE_GH_LOG=str(top / "fake-gh.jsonl"))
+    if github:  # the identity of the kit checkout (or the global one): a real repository gets a real author
+        name, email = (sh("git", "config", key, cwd=CORE.parent, check=False) for key in ("user.name", "user.email"))
+        if not (name and email):
+            raise SystemExit("FAILED: --github needs a git identity (git config user.name and user.email)")
+        env.update(GIT_AUTHOR_NAME=name, GIT_AUTHOR_EMAIL=email, GIT_COMMITTER_NAME=name, GIT_COMMITTER_EMAIL=email)
+    else:
+        env.update(GIT_AUTHOR_NAME="dry-run", GIT_AUTHOR_EMAIL="dry-run@localhost",
+                   GIT_COMMITTER_NAME="dry-run", GIT_COMMITTER_EMAIL="dry-run@localhost")
+        sh("git", "init", "-q", "--bare", "-b", "main", str(origin), cwd=top)
     shutil.copytree(SAMPLE / "seed", repo)
     sh("git", "init", "-q", "-b", "main", cwd=repo)
+    sh("git", "add", "-A", cwd=repo, env=env)  # a real project already has history before init
+    sh("git", "commit", "-q", "-m", "seed", cwd=repo, env=env)
     factory = [sys.executable, str(CORE / "cli.py")]
-    init = json.loads(sh(*factory, "init", "--apply", "--project", str(repo), "--preset", preset,
+    init = json.loads(sh(*factory, "init", "--apply", "--factory-clone", "--project", str(repo), "--preset", preset,
                          "--adapter", ADAPTER[preset], cwd=repo, env=env))
     toml = (repo / "factory.toml").read_text()
     if preset == "generic":  # a person fills in commands and models; here the generic fake agent does the work
@@ -65,13 +83,19 @@ def main(folder, preset, landing, models):
         data["roles"]["reviewer"]["fresh_session"] = True
         toml = tomlw.dumps(data, "Generic preset, filled in by hand.")
     (repo / "factory.toml").write_text(f"lanes = 4\nlanding = \"{landing}\"\n" + toml)
+    sh(*factory, "approve", "--yes", "--project", str(repo), cwd=repo, env=env)  # the person approves their own edit
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     (repo / "state.md").write_text(f"# State\n\n## Position\nUpdated {stamp} UTC.\n\n- W1 building.\n")
     shutil.copy(SAMPLE / "seed/plan/backlog.md", repo / "plan/backlog.md")
     sh("git", "add", "-A", cwd=repo, env=env)
-    sh("git", "commit", "-q", "-m", "seed and factory", cwd=repo, env=env)
+    sh("git", "commit", "-q", "--allow-empty", "-m", "factory set up (personal: nothing tracked changed)", cwd=repo, env=env)
     sh("git", "remote", "add", "origin", str(origin), cwd=repo)
-    sh("git", "push", "-q", "-u", "origin", "main", cwd=repo, env=env)
+    if github:  # reset the test repo: main is the seed, no other branch
+        for line in sh("git", "ls-remote", "--heads", "origin", cwd=repo, env=env).splitlines():
+            name = line.split("refs/heads/", 1)[1]
+            if name != "main":
+                sh("git", "push", "-q", "origin", "--delete", name, cwd=repo, env=env)
+    sh("git", "push", "-q", "-u", *(["--force"] if github else []), "origin", "main", cwd=repo, env=env)
 
     tick = [sys.executable, "factory/tick.py"]
     sh(*factory, "crew", "before-cut", "W1", "--project", str(repo), cwd=repo, env=env)
@@ -102,7 +126,7 @@ def main(folder, preset, landing, models):
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     (repo / "state.md").write_text(f"# State\n\n## Position\nUpdated {stamp} UTC.\n\n- W1 done: both units landed.\n")
     sh("git", "add", "-A", cwd=repo, env=env)
-    sh("git", "commit", "-q", "-m", "W1 done", cwd=repo, env=env)
+    sh("git", "commit", "-q", "--allow-empty", "-m", "W1 done", cwd=repo, env=env)
     sh("git", "push", "-q", "origin", "main", cwd=repo, env=env)
     pruned = json.loads(sh(*tick, "prune", cwd=repo, env=env))
     sh(*factory, "retro", "--project", str(repo), cwd=repo, env=env)
@@ -115,22 +139,23 @@ def main(folder, preset, landing, models):
     crew_ran = {c["agent"] for c in data["sections"]["metrics"]["crew"] if c["runs"]}
     units = json.loads((repo / "var/factory/queue.json").read_text())["units"]
     summary = {
-        "folder": str(top), "preset": preset, "landing": landing,
+        "folder": str(top), "preset": preset, "landing": landing, "origin": str(origin),
+        "pull_requests": sorted({u["pr"] for u in units if u.get("pr")}),
         "roles": [line for line in init if line.startswith("role ")],
         "ticks": [h["states"] for h in history],
         "landed": history[-1]["states"] == ["landed", "landed"],
-        "row_closed": closed.get("done"), "work_folders_pruned": len(pruned),
+        "row_closed": closed.get("done"), "work_folders_pruned": len(pruned["removed"]),
         "attempts_used": sum(u["attempts"] for u in units),
         "main_suite": suite.stdout.strip().splitlines()[-1] if suite.stdout.strip() else suite.stderr[-200:],
         "sabotage_undone": "sabotage" not in (check / "textkit/words.py").read_text(),
-        "brief_by_quill": (check / ".ai/specs/W1-U2.md").read_text().startswith("# Brief by Quill"),
+        "factory_files_landed": sorted(p for p in ("factory", ".ai", "crew", "factory.toml", ".claude") if (check / p).exists()),
         "crew_ran": sorted(crew_ran), "page": page,
         "findings": [f["code"] for f in data["sections"]["consistency"]["findings"]],
         "independence": data["sections"]["now"]["review_independence"]["text"],
     }
     print(json.dumps(summary, indent=1))
     ok = (summary["landed"] and summary["row_closed"] and suite.returncode == 0 and summary["sabotage_undone"]
-          and summary["brief_by_quill"] and crew_ran == EXPECTED_CREW and not summary["findings"]
+          and summary["factory_files_landed"] == [] and crew_ran == EXPECTED_CREW and not summary["findings"]
           and summary["attempts_used"] == 0)
     print("DRY RUN PASSED" if ok else "DRY RUN FAILED")
     return 0 if ok else 1
@@ -141,4 +166,4 @@ if __name__ == "__main__":
     values = {sys.argv[i + 1] for i, a in enumerate(sys.argv) if a.startswith("--") and i + 1 < len(sys.argv)}
     folder = next((w for w in words if w not in values), None)
     sys.exit(main(folder, option("--preset", "claude-only"), option("--landing", "direct"),
-                  option("--models", DEFAULT_MODELS)))
+                  option("--models", DEFAULT_MODELS), option("--github", None)))

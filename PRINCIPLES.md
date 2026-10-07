@@ -20,7 +20,7 @@ Each principle is here because breaking it cost real time. The exact rules are i
    different prompt, marked weaker. The reviewer never sees the builder's report and runs the sabotage itself.
 8. **Pinned, probed models; no silent fallback.** Exact model IDs that answered on this machine, never an alias. A
    model that stops answering stops the work and asks a person.
-9. **Deterministic gates, one host.** Same inputs, same result: one pinned toolchain, one clock host, scrubbed test runs.
+9. **Deterministic gates, one host.** Same inputs, same result: one pinned toolchain, one clock host, fenced test runs.
 10. **No black box, nothing stale.** Every step logs start and end; every stop, idle tick, hand correction, crew
     verdict and estimate-against-actual shows on the dashboard; a page older than its sources is refused.
 11. **Ask the human only for** money, accounts and passwords, production, messages to real people, a model change,
@@ -31,3 +31,6 @@ Each principle is here because breaking it cost real time. The exact rules are i
 14. **Improve slowly, by evidence.** A mistake seen twice in seven days earns one change, at most two a day; a
     mechanical mistake becomes a check, a judgement mistake one replaced rule line. Process tooling only after the
     same failure is measured twice. Proven lessons are promoted to the shared kit by pull request.
+15. **The person owns the factory and the repo.** Code a model wrote runs fenced, with no tokens. A model never
+    changes the factory's rules, prompts, scripts or budget by itself, and never hands the factory a command to run.
+    Setup changes no file the team tracks, and commits carry the person's own name through the team's hooks.

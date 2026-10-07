@@ -20,7 +20,7 @@ role = cfg["roles"]["chief-of-staff"]
 print(role["tool"], role["model"], role["effort"])
 PY
 )
-LOOP="Run the Chief of Staff loop: each iteration is job tick in .ai/prompts/chief-of-staff-jobs.v1.md; your role is .ai/prompts/chief-of-staff.v1.md. Keep going without stopping."
+LOOP="Run the Chief of Staff loop: each iteration is job tick in .ai/prompts/chief-of-staff-jobs.v1.md; your role is .ai/prompts/chief-of-staff.v1.md; the factory's rules are .ai/factory-agents.md (read them first). Keep going without stopping."
 case "$TOOL" in
   claude) CMD=(claude --agent chief-of-staff --model "$MODEL" --effort "$EFFORT" "$@" "/loop $LOOP") ;;
   codex)  CMD=(codex -m "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" "$@" "$LOOP") ;;

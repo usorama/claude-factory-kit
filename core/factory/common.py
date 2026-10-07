@@ -29,7 +29,9 @@ DEFAULTS = {
     "max_budget_build_usd": 3.0, "max_budget_review_usd": 3.0, "daily_budget_usd": 40.0,
     "max_retries": 3, "usage_pause_minutes": 60, "clock_host": "", "same_tool_review": "", "retro_time": "21:00",
     "crew_max_turns": 20, "max_budget_crew_usd": 0.75, "planning": "required",
-    "require_clone_marker": False, "forbidden_paths": [],
+    "require_clone_marker": True, "forbidden_paths": [], "footprint": "personal", "dashboard_publish": "local",
+    "test_timeout_minutes": 20, "sandbox_allow_paths": [],
+    "chief_session": "factory-chief", "harness_update_command": "", "handoff_max_minutes": 30, "restart_wait_seconds": 60,
 }
 OUTPUTS = ("claude-json", "codex-jsonl", "text")
 ROLE_FORMS = {"chief-of-staff": ("position", "consistency"), "builder": ("diff", "build_check"),
@@ -254,7 +256,12 @@ class Lock:
             mine.unlink(missing_ok=True)
 
     def __exit__(self, *exc):
-        self.path.unlink(missing_ok=True)
+        """Remove the lock only while it is still this process's: after a takeover it belongs to someone else."""
+        try:
+            if self.path.read_text() == stamp(os.getpid()):
+                _remove_if_same(self.path, stamp(os.getpid()))
+        except FileNotFoundError:
+            pass
 
 
 def start_time(pid):
@@ -331,6 +338,23 @@ def work_folder_problem(root, worktree):
             Path(ask(root, "--path-format=absolute", "--git-common-dir")).resolve():
         return f"{folder} is a worktree of another repository"
     return None
+
+
+class CommitRefused(ValueError):
+    """git refused a factory commit: a hook failed, or the person has no git identity set."""
+
+
+def commit(worktree, message):
+    """Commit staged work as the person who runs the factory (their own git identity and signing settings), with
+    the repo's hooks on. A refusal carries git's own message."""
+    done = git(worktree, "commit", "-q", "-m", message, check=False)
+    if done.returncode:
+        detail = (done.stderr or done.stdout).strip()[-600:]
+        if "tell me who you are" in detail or "auto-detect email" in detail:
+            raise CommitRefused("git has no identity for the person running the factory: set git config user.name "
+                                "and user.email (the factory commits as you)")
+        raise CommitRefused(f"git refused the commit (a hook, or signing): {detail}")
+    return git(worktree, "rev-parse", "HEAD").stdout.strip()
 
 
 def key(entry):

@@ -47,7 +47,17 @@
       "Bash(git push -f *)",
       "Bash(rm -rf *)",
       "Edit(./var/**)",
-      "Write(./var/**)"
+      "Write(./var/**)",
+      "Edit(./factory.toml)",
+      "Edit(./factory/**)",
+      "Edit(./.ai/prompts/**)",
+      "Edit(./.ai/factory-rules.md)",
+      "Edit(./.ai/defect-library.md)",
+      "Edit(./.ai/factory-agents.md)",
+      "Bash(python3 factory/protect.py --yes*)",
+      "Bash(factory approve*)",
+      "Bash(factory restart*)",
+      "Bash(python3 factory/restart.py*)"
     ]
   },
   "sandbox": {

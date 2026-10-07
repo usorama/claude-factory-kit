@@ -46,20 +46,29 @@ def parse(form, files):
             "cut": any(item.get("cut") is True for item in blocking)}
 
 
-def file_notes(root, unit_label, notes):
-    """Every note and downgraded finding becomes a todo row in plan/backlog.md (only a complete high
-    finding naming an acceptance line can REJECT; nothing else is lost or blocks)."""
-    from common import now, queue_lock
+def file_notes(root, unit_label, notes, cap=50):
+    """Review notes and downgraded findings never block and are never lost. They go word for word to
+    var/factory/notes/<unit>.md (at most cap of them), and plan/backlog.md gets one todo row per unit that points
+    there, so a chatty reviewer never floods the file the team reads. Returns the number of notes recorded."""
+    from common import now, queue_lock, var
     path = Path(root) / "plan/backlog.md"
     if not notes or not path.exists():
         return 0
+    label = "".join(c if c.isalnum() or c in "-_." else "_" for c in unit_label)
+    row_id = f"N-{label}"
     with queue_lock(root):
         text = path.read_text()
-        rows = [f"| N-{unit_label}-{i} | todo | {now()[:10]} | {' '.join(str(n).split()).replace('|', '/')[:300]} "
-                f"| review note on {unit_label} |" for i, n in enumerate(notes, 1)
-                if f"| N-{unit_label}-{i} |" not in text]
-        path.write_text(text.rstrip("\n") + "\n" + "\n".join(rows) + "\n" if rows else text)
-    return len(rows)
+        if f"| {row_id} |" in text:
+            return 0
+        kept = [" ".join(str(n).split()) for n in notes][:cap]
+        folder = var(root) / "notes"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{label}.md").write_text(f"# Review notes on {unit_label}\n\n" + "".join(f"- {n}\n" for n in kept)
+                                            + (f"\n({len(notes) - cap} more notes were dropped)\n" if len(notes) > cap else ""))
+        row = (f"| {row_id} | todo | {now()[:10]} | {len(kept)} review note(s) in var/factory/notes/{label}.md "
+               f"| review notes on {unit_label} |")
+        path.write_text(text.rstrip("\n") + "\n" + row + "\n")
+    return len(kept)
 
 
 def summary(parsed):

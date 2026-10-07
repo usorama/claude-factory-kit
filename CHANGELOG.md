@@ -1,7 +1,43 @@
 # Changelog
 
-Newest first. 1.2.2 makes the factory land by pull request on GitHub and closes four risks a first adopter found.
-Each item has a test and a sabotage; `FIXES.md` lists them item by item.
+Newest first. 1.2.3 makes the kit safe to run on a work repo: model-written code runs fenced, only a person changes
+the factory's rules, setup changes no team file, and commits carry the person's own name. Each item has a test and a
+sabotage; `FIXES.md` lists them item by item.
+
+## 1.2.3 - 2026-10-07
+
+From a second review. On each question the owner chose the safer option.
+
+- [Quality] Every test run of model-written code is fenced. It cannot write outside the work folder (bubblewrap on
+  Linux and the Windows Subsystem for Linux), reach the network, see the home folder or get a token. It also has a
+  time limit (`test_timeout_minutes`). Builder, reviewer and
+  crew run tests only through `factory/run_tests.py`; `sandbox_allow_paths` names extra writable folders.
+- [Quality] Roles and crew get an allow-listed environment and may not read secret files.
+- [Quality] A model never hands the factory a command. Sweeper Sid names test ids, which code runs fenced in a
+  scratch worktree. Crew agents never work in the live checkout.
+- [Quality] Only a person changes the factory: a changed script, `factory.toml`, prompt or rule stops the clock until
+  `factory approve --yes`. The chief may not edit those files, approve or restart. Crew memory lines are records only.
+- [Quality] Setup is personal by default, so nothing the team tracks changes. A team that agreed uses
+  `--footprint shared`. `require_clone_marker` is on by default; init writes the marker with `--factory-clone`.
+- [Quality] Commits carry the person's own git identity, with hooks and signing on. A refused push says why.
+- [Quality] The dashboard stays on the computer. Publishing it needs the dashboard_publish setting.
+- [Quality] The Stop hook runs the plugin's own check, never a project script.
+- [Quality] Pruning keeps unsaved work. The clock installer quotes paths and writes a small runner script. It never
+  replaces a crontab it could not read.
+- [Velocity] The guard copies a unit once, not once per mutant. A failed run about "quotas" no longer pauses the
+  factory. gh is needed only for pull request landing.
+- Promoted lessons leave the project's name out unless `--name-project` is given; review notes go to
+  `var/factory/notes` with one backlog row per unit; sabotage copies live under `var/factory/scratch`.
+
+Also new:
+
+- Updates: every tick warns while a project's `factory/` is behind the installed kit; `factory init --apply
+  --update` refreshes it.
+- The restart switch: `factory restart [--check] [--force] [--no-update]`, a person's command that updates the harness
+  and restarts the chief session safely, never touching the clock. The chief's job `handoff` prepares it.
+- Licence: Apache License 2.0 (`LICENSE`, `NOTICE`).
+- The landing ran for real against a private GitHub repository, in `pr_merge` and `auto` modes
+  (`dry_run.py --github OWNER/REPO`).
 
 ## 1.2.2 - 2026-10-07
 

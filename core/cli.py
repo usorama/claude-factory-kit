@@ -3,8 +3,10 @@
 
   factory init --plan|--apply [--preset claude-only|codex-only|claude-codex|generic]
                [--adapter claude-code|codex|generic] [--overwrite PATH ...]
-  factory agents          regenerate agent files from factory.toml (after changing roles or prompts)
+  factory agents          regenerate agent files from factory.toml and approve it (a person, after changing roles)
   factory chief [--print] start the Chief of Staff role AND its loop with its pinned model (run it in tmux)
+  factory approve [--yes] show changes to the factory's rules, prompts, scripts or budget; --yes records them (a person)
+  factory restart [--check] [--force] [--no-update]   update the harness and restart the chief session (a person)
   factory tick            one clock tick in this project
   factory clock [--print] install the 5-minute clock (cron, launchd; prints the Task Scheduler line)
   factory dashboard       build the dashboard page through the staleness gate; prints its path
@@ -23,7 +25,7 @@ import tomllib
 from pathlib import Path
 
 CORE = Path(__file__).resolve().parent
-COMMANDS = ("init", "agents", "chief", "tick", "clock", "dashboard", "retro", "crew", "probe", "roles", "promote-lesson", "check")
+COMMANDS = ("init", "approve", "restart", "agents", "chief", "tick", "clock", "dashboard", "retro", "crew", "probe", "roles", "promote-lesson", "check")
 sys.path.insert(0, str(CORE))
 
 
@@ -62,16 +64,25 @@ def main(argv=None):
     if command == "agents":
         import agents_gen
         print("\n".join(agents_gen.generate_all(project)))
+        run_project(project, "factory/protect.py", "--yes")  # the person approved the roles file
         return 0
     if command == "chief":
         return subprocess.run(["bash", "factory/chief.sh", *rest], cwd=project).returncode
+    if command == "approve":
+        return run_project(project, "factory/protect.py", *rest)
+    if command == "restart":  # a person only: no command or setting pre-approves it for a model
+        return run_project(project, "factory/restart.py", *rest)
     if command == "tick":
         return run_project(project, "factory/tick.py", "tick")
     if command == "clock":
         return subprocess.run(["bash", "factory/install-clock.sh", str(project), *rest], cwd=project).returncode
     if command == "dashboard":
         import build_dashboard
-        print(build_dashboard.build(project))
+        page = build_dashboard.build(project)
+        where = build_dashboard.publish_setting(project)
+        print(page)
+        print("publish: allowed as a claude.ai artifact (factory.toml dashboard_publish = \"artifact\")" if where == "artifact"
+              else "publish: no; the page stays on this computer (set dashboard_publish = \"artifact\" in factory.toml to allow it)")
         return 0
     if command == "retro":
         code = run_project(project, "factory/daily_report.py", "--write")

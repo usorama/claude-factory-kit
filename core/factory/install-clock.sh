@@ -10,8 +10,15 @@ fail() { echo "NOT READY: $1" >&2; exit 1; }
 case "$REPO" in /mnt/*) fail "the repo is under /mnt; move it into your Linux home folder" ;; esac
 [ -f "$HOME/.factory-env.sh" ] && . "$HOME/.factory-env.sh"
 ROLE_TOOLS="$(python3 -c 'import sys, tomllib; r = tomllib.load(open(sys.argv[1], "rb")).get("roles", {}); print(" ".join(sorted({v["tool"] for v in r.values() if v.get("tool") in ("claude", "codex")})))' "$REPO/factory.toml")"
-for tool in python3 git gh $ROLE_TOOLS; do command -v "$tool" > /dev/null || fail "$tool not found on PATH (set it in ~/.factory-env.sh)"; done
-gh auth status > /dev/null 2>&1 || fail "gh is not signed in: run gh auth login"
+# gh is needed only when units land through pull requests: landing is not "direct", and either factory.toml names
+# a pull request mode or the origin is on GitHub (where pr_merge is the default).
+LANDING="$(python3 -c 'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb")).get("landing", ""))' "$REPO/factory.toml")"
+if [ -z "$LANDING" ]; then
+  case "$(git -C "$REPO" config --get remote.origin.url || true)" in *github*) LANDING=pr_merge ;; *) LANDING=direct ;; esac
+fi
+NEED_GH=""; [ "$LANDING" = "direct" ] || NEED_GH=gh
+for tool in python3 git $NEED_GH $ROLE_TOOLS; do command -v "$tool" > /dev/null || fail "$tool not found on PATH (set it in ~/.factory-env.sh)"; done
+if [ -n "$NEED_GH" ]; then gh auth status > /dev/null 2>&1 || fail "gh is not signed in: run gh auth login (landing: $LANDING)"; fi
 echo "tools: $(python3 --version), $(git --version), roles use: ${ROLE_TOOLS:-other}"
 host="$(hostname)"
 python3 - "$REPO/factory.toml" "$host" "$PRINT" <<'EOF'
@@ -42,15 +49,26 @@ case "$(uname -s)" in
     echo "$BODY" > "$PLIST"; launchctl unload "$PLIST" 2> /dev/null || true; launchctl load "$PLIST"
     echo "launchd: $PLIST" ;;
   Linux)
-    LINE="*/5 * * * * /bin/bash $TICK $REPO"
+    # cron hands its line to /bin/sh, and % means a new line there: a path with ' or % cannot be quoted safely.
+    case "$REPO" in *"'"*|*%*) fail "the repo path contains ' or %; cron cannot run it safely. Rename the folder." ;; esac
+    RUNNER="$REPO/factory/clock-run.sh"   # no arguments: every path is quoted inside it
+    LINE="*/5 * * * * /bin/bash '$RUNNER'"
     if grep -qi microsoft /proc/version 2> /dev/null; then
       echo "WSL2: cron needs systemd. If 'systemctl is-active cron' is not active: add [boot] systemd=true"
       echo "      to /etc/wsl.conf, run 'wsl --shutdown' in PowerShell, then 'sudo systemctl enable --now cron'."
       echo "      Or use Windows Task Scheduler every 5 minutes with:"
-      echo "      wsl.exe -d Ubuntu -- bash -lc \"$TICK $REPO\""
+      echo "      wsl.exe -d Ubuntu -- bash '$RUNNER'"
     fi
     if [ "$PRINT" = "--print" ]; then echo "$LINE"; exit 0; fi
-    ( crontab -l 2> /dev/null | grep -vF "$TICK" ; echo "$LINE" ) | crontab -
+    printf '#!/usr/bin/env bash\n# Written by factory/install-clock.sh: the clock for this repo. cron runs it every 5 minutes.\nexec /bin/bash %q %q\n' \
+      "$TICK" "$REPO" > "$RUNNER"
+    chmod +x "$RUNNER"
+    # Keep every other line of the person's crontab. "no crontab for" means an empty one; any other failure stops
+    # here, because writing a new crontab after a failed read would delete the person's other jobs.
+    if ! CURRENT="$(crontab -l 2>&1)"; then
+      case "$CURRENT" in *"no crontab for"*) CURRENT="" ;; *) fail "crontab -l failed, so your crontab was not changed: $CURRENT" ;; esac
+    fi
+    { if [ -n "$CURRENT" ]; then printf '%s\n' "$CURRENT" | grep -vF -e "$RUNNER" -e "$TICK" || true; fi; echo "$LINE"; } | crontab -
     echo "cron: $LINE" ;;
   *) fail "unknown system $(uname -s); on Windows run this inside WSL2" ;;
 esac

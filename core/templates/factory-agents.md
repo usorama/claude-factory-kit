@@ -14,7 +14,7 @@ Every role is pinned in `factory.toml` (tool, model, effort, permissions, a vers
 - **Reviewer:** the `roles.reviewer` command: a different model when one is available, else a fresh
   session with a different review prompt (the dashboard marks that weaker). Never the builder's
   session or report.
-- **Human (<owner>):** only decisions, through `DEC-` cards.
+- **Human (the person who runs the factory):** only decisions, through `DEC-` cards.
 
 ## Always
 - Code decides anything computable. A model's answer is evidence that code checks.

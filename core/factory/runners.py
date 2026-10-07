@@ -13,17 +13,19 @@ model, effort, prompt file and hash, caps, and for the reviewer the independence
 """
 import hashlib
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
 
 import crew
 from build_check import build_check
-from common import (BudgetReached, budget_gate, config, config_problem, git, label, read_queue, review_independence,
+from common import (BudgetReached, CommitRefused, budget_gate, commit, config, config_problem, git, label, read_queue, review_independence,
                     spend, var, work_folder_problem)
 from drive import Retry, RetryOnce
-from modelrun import FORM_NAME, NO_NETWORK, claude_env, claude_usage, classify, fill, role_command, run_tracked
-from land import (DirectToGitHubRefused, GhFailed, MainMoved, catch_up, effective_landing, land, patch_id, pr_state,
+from modelrun import (FORM_NAME, NO_NETWORK, RUN_TESTS, RUN_TESTS_RULE, claude_env, claude_usage, classify, fill,
+                      role_command, run_tracked, with_read_denies)
+from land import (DirectToGitHubRefused, GhFailed, MainMoved, PushRefused, catch_up, effective_landing, land, patch_id, pr_state,
                   restore_caches)
 from red_check import red_check, tolerated_tests
 from review import KINDS, file_notes, parse, summary
@@ -35,6 +37,8 @@ def make_runners(root, gh="gh"):
     if problem:
         raise ValueError(problem)
     base = cfg["base"]
+    os.environ["FACTORY_TEST_TIMEOUT"] = str(int(cfg["test_timeout_minutes"] * 60))
+    os.environ["FACTORY_ALLOW_PATHS"] = os.pathsep.join(cfg["sandbox_allow_paths"])
 
     def context(entry):
         worktree = Path(entry["worktree"])
@@ -59,10 +63,12 @@ def make_runners(root, gh="gh"):
         role = cfg["roles"][name]
         short = "build" if name == "builder" else "review"
         prompt_path = root / role["prompt"]
-        prompt = fill(prompt_path.read_text(), {**values, "kinds": ", ".join(KINDS)})
-        command = role_command(role, {"model": role["model"], "effort": role["effort"], "no_network": NO_NETWORK,
-                                      "max_turns": cfg[f"max_turns_{short}"],
-                                      "max_budget": cfg[f"max_budget_{short}_usd"]})
+        prompt = fill(prompt_path.read_text(), {**values, "kinds": ", ".join(KINDS), "run_tests": RUN_TESTS,
+                                                "defect_library": root / ".ai/defect-library.md"})
+        role = {**role, "tools": [RUN_TESTS_RULE if t == "{run_tests}" else t for t in role.get("tools", [])]}
+        command = with_read_denies(role_command(role, {
+            "model": role["model"], "effort": role["effort"], "no_network": NO_NETWORK,
+            "max_turns": cfg[f"max_turns_{short}"], "max_budget": cfg[f"max_budget_{short}_usd"]}))
         env = claude_env(name)
         if form:
             env["FACTORY_REVIEW_FORM"] = str(form)
@@ -108,9 +114,12 @@ def make_runners(root, gh="gh"):
                                     "tests": unit["tests"]}, workdir=worktree)
             except crew.CrewRefused as error:  # a brief that fails its check is a cut problem
                 return False, str(error), {}
-            git(worktree, "add", "--", str(brief.relative_to(worktree)))
-            git(worktree, "-c", "user.name=factory", "-c", "user.email=factory@localhost", "-c", "core.hooksPath=/dev/null",
-                "commit", "-q", "-m", f"{name}: brief by quill")
+            if cfg["footprint"] == "shared":  # personal setup: the brief stays out of the team's history
+                git(worktree, "add", "--", str(brief.relative_to(worktree)))
+                try:
+                    commit(worktree, f"{name}: brief by quill")
+                except CommitRefused as error:
+                    return False, str(error), {}
         try:
             return True, json.dumps(red_check(entry["unit"], worktree, tolerated_tests(root, entry))), {}
         except ValueError as error:
@@ -140,8 +149,10 @@ def make_runners(root, gh="gh"):
             if extra.get("denials"):  # the builder was stopped by a permission, not by the unit
                 raise RetryOnce(f"the builder was denied a tool: {extra['first_denial']}")
             return False, "the builder changed no unit file", extra
-        git(worktree, "-c", "user.name=factory", "-c", "user.email=factory@localhost",
-            "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", f"{name}: build round {entry['attempts'] + 1}")
+        try:
+            commit(worktree, f"{name}: build round {entry['attempts'] + 1}")
+        except CommitRefused as error:  # a team hook refused the builder's work: the unit's refusal, with the reason
+            return False, str(error), extra
         restore_caches(worktree)
         return True, report[-2000:], extra
 
@@ -218,7 +229,7 @@ def make_runners(root, gh="gh"):
                                        entry.get("pr"), mode, cfg["merge_method"], cfg["landing"] == "direct")
         except MainMoved as moved:
             raise Retry(str(moved)) from moved
-        except (GhFailed, DirectToGitHubRefused) as error:
+        except (GhFailed, DirectToGitHubRefused, PushRefused) as error:
             raise RetryOnce(str(error)) from error
         except ValueError as error:
             return False, str(error), {}

@@ -26,6 +26,8 @@ def make_repo(tmp_path):
             (root / path).parent.mkdir(parents=True, exist_ok=True)
             (root / path).write_text(text)
         git(root, "init", "-q", "-b", "main")
+        git(root, "config", "user.name", "Test Person")  # the factory commits as the person: give them an identity
+        git(root, "config", "user.email", "person@example.invalid")
         git(root, "add", "-A")
         git(root, "-c", "user.name=t", "-c", "user.email=t@localhost", "commit", "-q", "-m", "seed")
         return root
@@ -61,6 +63,9 @@ def roles_project(root, answered=WORK_PC, preset="claude-only", edit=None):
                         "codex": {"available": True, "answered": [m for m in answered if m.startswith("gpt")]}}}
     text, rows = probe.roles_file(probe.load_preset(preset), report)
     (Path(root) / "factory.toml").write_text(text if edit is None else edit(text))
+    (Path(root) / ".factory-clone").write_text("")  # a test project stands in for the factory's own clone
+    import protect
+    protect.snapshot(root)  # as init does: the person approved this roles file
     return rows
 
 

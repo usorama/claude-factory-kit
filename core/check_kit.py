@@ -13,6 +13,9 @@ from pathlib import Path
 REF = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([\w./-]+)")
 CLI_CALL = re.compile(r"core/cli\.py\"?\s+([a-z-]+)")
 PROJECT_SCRIPT = re.compile(r"python3 factory/([\w/]+\.py)")
+PROTECTED_EDITS = ("Edit(./factory.toml)", "Edit(./factory/**)", "Edit(./.ai/prompts/**)", "Edit(./.ai/factory-rules.md)",
+                   "Edit(./.ai/defect-library.md)", "Edit(./.ai/factory-agents.md)",
+                   "Bash(python3 factory/protect.py --yes*)", "Bash(python3 factory/restart.py*)")
 
 
 def problems(repo):
@@ -56,8 +59,11 @@ def problems(repo):
     for source, data in lists:
         launchers = list(data.get("commands", {}).items()) + [(n, r.get("command")) for n, r in data.get("roles", {}).items()]
         rules = [t for a in data.get("agents", {}).values() for t in a.get("tools", [])]
-        rules += [t for r in data.get("roles", {}).values() for t in r.get("tools", []) + r.get("deny", [])]
+        rules += [t for n, r in data.get("roles", {}).items() if n != "chief-of-staff"  # the person's own session
+                  for t in r.get("tools", []) + r.get("deny", [])]
         for rule in rules:
+            if rule == "Bash" or re.fullmatch(r"Bash\((python3?|pytest|bash|sh)\b.*\)", str(rule)) or "pytest" in str(rule):
+                found.append(f"{source}: {rule} lets a model run code unfenced; tests run only through {{run_tests}}")
             if str(rule).startswith("Write("):
                 found.append(f"{source}: {rule} never matches in Claude Code; write rules are Edit(<path>)")
         for name, command in launchers:
@@ -93,6 +99,20 @@ def problems(repo):
         for word in CLI_CALL.findall(text):
             if word not in commands:
                 found.append(f"{path.relative_to(repo)} calls core/cli.py {word}, which is not a command")
+    for command in sorted((repo / "adapters/claude-code/commands").glob("*.md")):
+        head = command.read_text().split("---")[1] if command.read_text().startswith("---") else ""
+        allowed = next((line for line in head.splitlines() if line.startswith("allowed-tools")), "")
+        for word in ("approve", "restart", "protect.py", 'cli.py" agents'):  # agents also approves the roles file
+            if word in allowed:
+                found.append(f"{command.name} pre-approves {word}; only a person may run it")
+        if re.search(r'python3 factory/\*|cli\.py"? \*\)', allowed):
+            found.append(f"{command.name} pre-approves every factory script or cli command, which includes approve and "
+                         "restart; name each one")
+    settings = json.loads((repo / "core/templates/claude/settings.json").read_text())
+    for rule in PROTECTED_EDITS:
+        if rule not in settings["permissions"]["deny"]:
+            found.append(f"core/templates/claude/settings.json must deny {rule}: rules, prompts and the budget change "
+                         "only through a unit or a person")
     promote = repo / "adapters/claude-code/commands/factory-promote-lesson.md"
     if promote.exists() and "promote-lesson" in promote.read_text().split("---")[1]:
         found.append("factory-promote-lesson.md pre-approves promote-lesson; pushing lesson text needs the person's typed URL")
