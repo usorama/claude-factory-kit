@@ -28,6 +28,7 @@ DEFAULTS = {
     "max_turns_build": 60, "max_turns_review": 40,
     "max_budget_build_usd": 3.0, "max_budget_review_usd": 3.0, "daily_budget_usd": 40.0,
     "max_retries": 3, "usage_pause_minutes": 60, "clock_host": "", "same_tool_review": "", "retro_time": "21:00",
+    "crew_max_turns": 20, "max_budget_crew_usd": 0.75, "planning": "required",
 }
 OUTPUTS = ("claude-json", "codex-jsonl", "text")
 ROLE_FORMS = {"chief-of-staff": ("position", "consistency"), "builder": ("diff", "build_check"),
@@ -38,7 +39,7 @@ SESSION_REUSE = {"claude": {"-c", "--continue", "-r", "--resume", "--session-id"
                  "codex": {"resume", "fork", "--last"},
                  "other": {"--continue", "--resume", "--session-id", "resume", "fork", "--last"}}
 FRESH_FLAG = {"claude": "--no-session-persistence", "codex": "--ephemeral"}
-LANDINGS = ("direct", "auto", "pr_only")
+LANDINGS = ("direct", "pr_merge", "auto", "pr_only")
 MERGE_METHODS = ("merge", "squash", "rebase")
 
 
@@ -144,11 +145,40 @@ def pause(root, minutes):
     return until
 
 
+def spend(root, who, cost):
+    """Record one model run's cost the moment it ends (builds, reviews and every crew run)."""
+    if isinstance(cost, (int, float)):
+        with (var(root) / "spend.jsonl").open("a") as stream:
+            stream.write(json.dumps({"at": now(), "who": who, "cost_usd": cost}) + "\n")
+
+
 def spent_today(root):
-    """US dollars recorded by claude -p today (UTC), from the step log."""
+    """US dollars spent on model runs today (UTC): every build, review and crew run, from the spend ledger."""
     today = now()[:10]
-    return round(sum(e["cost_usd"] for e in read_jsonl(var(root) / "log.jsonl")
+    return round(sum(e["cost_usd"] for e in read_jsonl(var(root) / "spend.jsonl")
                      if e.get("at", "")[:10] == today and isinstance(e.get("cost_usd"), (int, float))), 4)
+
+
+class BudgetReached(Exception):
+    """The daily model budget is spent: no model run starts until tomorrow or a person raises it."""
+
+
+def budget_gate(root, cfg=None):
+    """Checked before every model run and after each one: at or over the cap, one card, then nothing runs."""
+    cfg = cfg or config(root)
+    spent = spent_today(root)
+    if spent < cfg["daily_budget_usd"]:
+        return spent
+    day = now()[:10]
+    asks = var(root) / "asks"
+    card = asks / f"DEC-budget-{day}.md"
+    if not card.exists() and not (asks / "answered" / card.name).exists():
+        asks.mkdir(parents=True, exist_ok=True)
+        card.write_text(f"# Daily model budget reached ({spent} of {cfg['daily_budget_usd']} US dollars). Raise it for today?\n\n"
+                        f"For: human\nKind: decision\nAsked: {now()}\n"
+                        "Recommendation: No; model runs continue tomorrow. Checks and landings go on today.\n"
+                        f"Reply: approve DEC-budget-{day} or reject DEC-budget-{day}\n")
+    raise BudgetReached(f"daily budget reached: {spent} of {cfg['daily_budget_usd']} US dollars")
 
 
 def var(root):

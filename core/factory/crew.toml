@@ -1,13 +1,16 @@
 # The crew: who runs, on which trigger, with which requirement, and which code check accepts the answer.
 # Code reads this file (factory/crew.py). No session chooses a crew agent or a model: an agent runs only
 # when its trigger fires, with the exact model pinned for the role it uses in factory.toml.
-# Each agent is read-only unless `writes` names its one file. Its memory is crew/<name>/memory.md in the
+# Each agent is read-only unless `writes` names its one file. Write rules are Edit(<path>): in Claude Code 2.1.290
+# a Write(<path>) rule never matches (tests/fixtures/claude-permissions-2.1.290.json). Every agent may edit only its
+# answer file .factory-crew-<name>.json (and Quill its brief). Permissions travel on the command line: a new work
+# folder is untrusted, so the project's settings allow list is ignored there. Its memory is crew/<name>/memory.md in the
 # project; code appends the agent's memory_line there.
 
 [commands]
 claude = ["claude", "-p", "--model", "{model}", "--effort", "{effort}", "--output-format", "json", "--no-session-persistence",
-          "--permission-mode", "dontAsk", "--settings", "{no_network}", "--max-turns", "40", "--max-budget-usd", "{max_budget}",
-          "--allowedTools", "{tools}", "--disallowedTools", "Bash(git push *)", "Bash(git commit *)", "Edit", "WebFetch", "WebSearch"]
+          "--permission-mode", "dontAsk", "--settings", "{no_network}", "--max-turns", "{max_turns}", "--max-budget-usd", "{max_budget}",
+          "--allowedTools", "{tools}", "--disallowedTools", "Bash(git push *)", "Bash(git commit *)", "WebFetch", "WebSearch"]
 codex = ["codex", "exec", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "-s", "{tools}", "--ephemeral", "--json", "-"]
 
 [rules]
@@ -22,31 +25,31 @@ uses_role = "builder"
 effort = "medium"
 prompt = ".ai/prompts/crew/sorter-sam.v1.md"
 form = "triage"
-tools = ["Read", "Grep", "Glob", "Bash(git log *)", "Bash(git show *)", "Bash(ls *)"]
-sandbox = "read-only"
+tools = ["Read", "Grep", "Glob", "Bash(git log *)", "Bash(git show *)", "Bash(ls *)", "Edit(.factory-crew-*)"]
+sandbox = "workspace-write"
 
 [agents.sweeper-sid]
 uses_role = "builder"
 effort = "high"
 prompt = ".ai/prompts/crew/sweeper-sid.v1.md"
 form = "sweep"
-tools = ["Read", "Grep", "Glob", "Bash(git log *)", "Bash(git show *)", "Bash(python3 -m pytest *)", "Bash(ls *)"]
-sandbox = "read-only"
+tools = ["Read", "Grep", "Glob", "Bash(git log *)", "Bash(git show *)", "Bash(python3 -m pytest *)", "Bash(ls *)", "Edit(.factory-crew-*)"]
+sandbox = "workspace-write"
 
 [agents.plan-coverage-auditor]
 uses_role = "reviewer"
 effort = "high"
 prompt = ".ai/prompts/crew/plan-coverage-auditor.v1.md"
 form = "coverage"
-tools = ["Read", "Grep", "Glob", "Bash(ls *)"]
-sandbox = "read-only"
+tools = ["Read", "Grep", "Glob", "Bash(ls *)", "Edit(.factory-crew-*)"]
+sandbox = "workspace-write"
 
 [agents.quill]
 uses_role = "builder"
 effort = "high"
 prompt = ".ai/prompts/crew/quill.v1.md"
 form = "brief"
-tools = ["Read", "Grep", "Glob", "Bash(ls *)", "Bash(git log *)", "Write(.ai/specs/*)"]
+tools = ["Read", "Grep", "Glob", "Bash(ls *)", "Bash(git log *)", "Edit(.ai/specs/*)", "Edit(.factory-crew-*)"]
 sandbox = "workspace-write"
 writes = ".ai/specs/<unit>.md"
 
@@ -64,7 +67,7 @@ uses_role = "reviewer"
 effort = "high"
 prompt = ".ai/prompts/crew/lockjaw.v1.md"
 form = "review"
-tools = ["Read", "Grep", "Glob", "Bash(python3 *)", "Bash(git diff *)", "Bash(cp *)", "Bash(mkdir *)", "Write(.factory-crew-*)"]
+tools = ["Read", "Grep", "Glob", "Bash(python3 *)", "Bash(git diff *)", "Bash(cp *)", "Bash(mkdir *)", "Edit(.factory-crew-*)"]
 sandbox = "workspace-write"
 
 [agents.thomasina]
@@ -72,7 +75,7 @@ uses_role = "reviewer"
 effort = "high"
 prompt = ".ai/prompts/crew/thomasina.v1.md"
 form = "review"
-tools = ["Read", "Grep", "Glob", "Bash(python3 *)", "Bash(curl http://localhost*)", "Bash(curl http://127.0.0.1*)", "Write(.factory-crew-*)"]
+tools = ["Read", "Grep", "Glob", "Bash(python3 *)", "Bash(curl http://localhost*)", "Bash(curl http://127.0.0.1*)", "Edit(.factory-crew-*)"]
 sandbox = "workspace-write"
 
 [agents.spec-conformance-auditor]
@@ -80,24 +83,24 @@ uses_role = "reviewer"
 effort = "high"
 prompt = ".ai/prompts/crew/spec-conformance-auditor.v1.md"
 form = "conformance"
-tools = ["Read", "Grep", "Glob", "Bash(python3 *)", "Bash(git log *)", "Write(.factory-crew-*)"]
-sandbox = "read-only"
+tools = ["Read", "Grep", "Glob", "Bash(python3 *)", "Bash(git log *)", "Edit(.factory-crew-*)"]
+sandbox = "workspace-write"
 
 [agents.claim-verifier]
 uses_role = "reviewer"
 effort = "high"
 prompt = ".ai/prompts/crew/claim-verifier.v1.md"
 form = "claims"
-tools = ["Read", "Grep", "Glob", "Bash(python3 -m pytest *)", "Bash(git log *)", "Bash(git show *)", "Bash(ls *)", "Write(.factory-crew-*)"]
-sandbox = "read-only"
+tools = ["Read", "Grep", "Glob", "Bash(python3 -m pytest *)", "Bash(git log *)", "Bash(git show *)", "Bash(ls *)", "Edit(.factory-crew-*)"]
+sandbox = "workspace-write"
 
 [agents.the-bookie]
 uses_role = "summarizer"
 effort = "low"
 prompt = ".ai/prompts/crew/the-bookie.v1.md"
 form = "scorecard"
-tools = ["Read", "Write(.factory-crew-*)"]
-sandbox = "read-only"
+tools = ["Read", "Edit(.factory-crew-*)"]
+sandbox = "workspace-write"
 
 # Triggers. when: always | risk (the unit's risk class or files match rules.risk_*) | surface (files match rules.surface_paths)
 [[triggers]]

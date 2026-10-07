@@ -1,6 +1,6 @@
 """One plain report per day, written by code from the factory's own records. No AI touches a number.
 
-Sources: var/factory/log.jsonl, var/factory/ticks.log, var/factory/asks/, .ai/lessons.jsonl.
+Sources: var/factory/log.jsonl, var/factory/spend.jsonl, var/factory/ticks.log, var/factory/asks/, .ai/lessons.jsonl.
 Usage: daily_report.py [--day YYYY-MM-DD] [--write]   (--write saves var/factory/daily/<day>.md)
 """
 import argparse
@@ -29,7 +29,7 @@ def days(root):
     lessons = read_jsonl(root / ".ai/lessons.jsonl")
     out = defaultdict(lambda: {"landed": [], "first_checks": [], "splits": 0, "hand": [], "idle": Counter(),
                                "ticks": 0, "skipped_ticks": 0, "cost_usd": 0.0, "lessons": [], "decisions": [],
-                               "refusals": [], "defects": []})
+                               "refusals": [], "defects": [], "planning_skipped": []})
     enqueued = {e["unit"]: e["at"] for e in events if e.get("event") == "enqueue"}
     for unit, event in _first(events, "check").items():
         out[event["at"][:10]]["first_checks"].append(bool(event["ok"]))
@@ -41,14 +41,17 @@ def days(root):
             day["landed"].append({"unit": event["unit"], "pr": event.get("pr"), "minutes_to_land": minutes})
         if event.get("event") == "end" and event.get("ok") is False:
             day["refusals"].append({"unit": event["unit"], "step": event["step"], "why": event.get("outcome", "")})
+        if event.get("event") == "planning_skipped":
+            day["planning_skipped"].append(event["row"])
         if event.get("event") == "defect":
             day["defects"].append({"unit": event["unit"], "note": event["note"]})
         if event.get("to") == "needs_split":
             day["splits"] += 1
         if event.get("event") == "hand":
             day["hand"].append({"unit": event["unit"], "reason": event["reason"], "note": event["note"]})
-        if isinstance(event.get("cost_usd"), (int, float)):
-            day["cost_usd"] += event["cost_usd"]
+    for paid in read_jsonl(var(root) / "spend.jsonl"):  # one line per model run: never counted twice
+        if isinstance(paid.get("cost_usd"), (int, float)):
+            out[paid["at"][:10]]["cost_usd"] += paid["cost_usd"]
     for tick in ticks:
         day = out[tick["at"][:10]]
         day["ticks"] += 1
@@ -77,6 +80,7 @@ def markdown(day):
                  for u in day["landed"]),
              f"- Refusals: {len(day['refusals'])}" + "".join(
                  f"\n  - {r['unit']} at {r['step']}: {r['why']}" for r in day["refusals"]),
+             "- Rows cut without a planning matrix (planning skipped): " + (", ".join(day["planning_skipped"]) or "none"),
              f"- Escaped defects: {len(day['defects'])}" + "".join(f"\n  - {d['unit']}: {d['note']}" for d in day["defects"]),
              f"- First-try green (first build check passed): {day['first_try_green']}",
              f"- Units sent to split: {day['splits']}",

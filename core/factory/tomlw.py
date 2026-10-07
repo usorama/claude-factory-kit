@@ -18,9 +18,10 @@ def dumps(data, comment=""):
     tables = {k: v for k, v in data.items() if isinstance(v, dict)}
     lines += [f"{k} = {value(v)}" for k, v in data.items() if k not in tables]
     for name, table in tables.items():
+        plain = {k: v for k, v in table.items() if not isinstance(v, dict)}
+        if plain:  # a table header first, so these keys cannot fall into an earlier table
+            lines += ["", f"[{name}]"] + [f"{k} = {value(v)}" for k, v in plain.items()]
         for sub, body in table.items():
             if isinstance(body, dict):
                 lines += ["", f"[{name}.{sub}]"] + [f"{k} = {value(v)}" for k, v in body.items()]
-            else:
-                lines.append(f"{name}.{sub} = {value(body)}")
     return "\n".join(lines) + "\n"

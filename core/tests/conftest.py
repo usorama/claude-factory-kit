@@ -73,3 +73,16 @@ def clock_repo(make_repo, tmp_path):
     git(root, "remote", "add", "origin", str(tmp_path / "origin.git"))
     git(root, "push", "-q", "origin", "main")
     return root
+
+
+def plan_matrix(*rows):
+    """A valid plan/slice-matrix.json whose slices are the given rows."""
+    return json.dumps({
+        "source": {"description": "Test plan.", "requirements": ["REQ1"],
+                   "outcomes": [{"id": "O1", "text": "Users get the result.", "requirements": ["REQ1"], "first_proof": rows[0]}],
+                   "features": ["The feature"]},
+        "engines": [],
+        "slices": [{"id": row, "title": f"Row {row}", "behavior": "A user sees the result.", "layers_touched": ["code", "tests"],
+                    "acceptance": [{"check": "The tests pass.", "type": "yes_no", "command": "python3 -m pytest -q passes"}],
+                    "blocked_by": [], "size": "S", "est_hours": 1, "covers": ["REQ1"], "engines": {}, "outcomes": ["O1"]}
+                   for row in rows]})

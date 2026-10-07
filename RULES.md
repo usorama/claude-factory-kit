@@ -14,6 +14,8 @@ checked by the reviewer. Why each rule exists: PRINCIPLES.md.
 - Do not re-cut the whole plan to size work. Size each row when it is reached (section 2).
 
 ## 2. Cut: sizing at cut time  [factory/unit_check.py, factory/brief_check.py, factory/cited_sources.py, factory/crew.py]
+- Planning is required: `before-cut` refuses a row that is not a slice of a valid `plan/slice-matrix.json`. Only
+  `planning = "skip"` in factory.toml lets a row through without one; the skip is logged and named in the daily report.
 - Before a row is cut, `factory crew before-cut <row>`: Sweeper Sid checks it is not already done (a "done" verdict
   closes the row only after code re-runs its evidence command), and the plan coverage auditor maps every deliverable
   to a unit; a dropped deliverable blocks the cut. A plan change after the audit blocks it again.
@@ -55,8 +57,17 @@ an open card. Before the check the unit catches up with main.
 - Time box: twice the estimate, at least 20 minutes. A rebuild starts from the cut and gets the last finding; each
   fix round is a fresh session.
 - Machinery is never the unit's fault: a model error, a tool denial that left no change, a failed fetch or gh call
-  is retried (once, or at most `max_retries` in a row); a usage limit pauses every model step; the daily budget holds
-  them and asks the human once.
+  is retried (once, or at most `max_retries` in a row); a usage limit pauses every model step.
+- Budget: every model run (build, review and every crew run) is written to the spend ledger the moment it ends.
+  `daily_budget_usd` is checked before every model run and after each one; reaching it raises one DEC-budget card and
+  no model run starts until tomorrow or a person raises it. Per-run caps: `max_budget_build_usd`,
+  `max_budget_review_usd`, `max_budget_crew_usd`; turns: `max_turns_build`, `max_turns_review`, `crew_max_turns`.
+  Each preset ships caps that fit it, and `factory init` shows the expected cost per unit and per row.
+- Permissions travel on the command line (`--permission-mode dontAsk --allowedTools ... --disallowedTools ...`): a new
+  work folder is untrusted, and Claude Code ignores its project allow list there. A path write rule is
+  `Edit(<path>)`; `Write(<path>)` never matches; never deny `Edit` or `Write` outright (it blocks answer files).
+- Python caches never count: the build check ignores `__pycache__/` and `*.pyc`, and tracked caches are restored
+  after a build and before a catch-up. `factory init` warns when the repo tracks cache files.
 
 ## 6. Build check  [factory/build_check.py, factory/guard.py]
 Refused when a file outside the list changed, a test file changed, a named test fails, a new check survives the
@@ -75,10 +86,15 @@ mutation guard (no named test fails when it is removed), or any other test fails
 - Stop after the second refusal or twice the estimate: the unit goes to `needs_split`. There is no third round.
 
 ## 8. Landing  [factory/land.py]
-Catch up with main by replaying the unit's own commits; the change must equal the reviewed change (patch id); the
-whole suite on the merged result; push with `--force-with-lease`; open the pull request with the review form; then by
-`landing`: `direct` merges by exact head commit (retry when main moved), `auto` lets GitHub merge when its rules pass,
-`pr_only` leaves it to people. One landing at a time.
+Catch up with main by replaying the unit's own commits; the change must equal the reviewed change (patch id); build
+the exact commit that will land (the unit joined with the fetched base by `merge_method`) and run the whole suite on
+it; then by `landing`:
+- `direct` (default, any host: GitHub, GitHub Enterprise, GitLab, a bare repo; no gh): push that tested commit to the
+  base with `--force-with-lease=refs/heads/<base>:<fetched>`; if the base moved, nothing is overwritten and landing
+  retries next tick.
+- `pr_merge` (GitHub): open a pull request with the review form and merge it by exact head commit.
+- `auto` (GitHub): GitHub merges when its branch rules pass. `pr_only` (GitHub): people merge.
+`factory init` names the origin's host and the modes that work there. One landing at a time.
 
 ## 9. Stops, holds and cards  [factory/tick.py, factory/asks.py]
 - A stopped unit gets a card for the chief of staff, who handles it and closes it in the same step. Never pushed to a person.
@@ -94,7 +110,9 @@ coverage auditor (before a cut; the auditor also on a plan change), Quill (a uni
 (every unit after its check), Lockjaw (risk), Thomasina (surface; also when a row lands), the spec conformance auditor
 and the claim verifier (a row landed; every done claim, handoff and daily report), the Bookie (the daily retro).
 Each uses the model of a role, is read-only unless it writes one named file, answers in a fixed JSON form checked by
-code, and keeps its memory in `crew/<name>/memory.md` in the project (code appends it).
+code, and keeps its memory in `crew/<name>/memory.md` in the project (code appends it). A refused answer (a machinery
+cause or a broken form) stops at once with one `crew-<agent>-<subject>` card for the chief of staff; the agent does not
+run again on that subject while the card is open. Review-note rows (`N-...`) are not triaged at model cost.
 
 ## 11. Rows close by code  [factory/tick.py close-row]
 A row is marked done only by `tick.py close-row`, after all its units landed and the row_landed crew passed

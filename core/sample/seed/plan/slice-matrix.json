@@ -1,0 +1,15 @@
+{
+ "source": {
+  "description": "Sample plan for the text kit dry run. Requirements REQ1 and REQ2 map to the two features in order.",
+  "requirements": ["REQ1", "REQ2"],
+  "outcomes": [{"id": "O1", "text": "Users can count the words of a text and write a text in title case.", "requirements": ["REQ1", "REQ2"], "first_proof": "W1"}],
+  "features": ["Count the words in a text", "Title-case a text"]
+ },
+ "engines": [],
+ "slices": [
+  {"id": "W1", "title": "Word tools for the text kit", "behavior": "A caller counts words and title-cases a text through the text kit.",
+   "layers_touched": ["library", "tests"],
+   "acceptance": [{"check": "The word-count and title-case tests pass.", "type": "yes_no", "command": "python3 -m pytest -q passes"}],
+   "blocked_by": [], "size": "S", "est_hours": 1, "covers": ["REQ1", "REQ2"], "engines": {}, "outcomes": ["O1"]}
+ ]
+}

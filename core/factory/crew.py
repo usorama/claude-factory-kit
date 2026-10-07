@@ -19,8 +19,9 @@ import tomllib
 from pathlib import Path
 
 from brief_check import BriefRefused, check_brief
-from common import config, log, now, read_jsonl, var
-from modelrun import NO_NETWORK, claude_env, classify, fill, role_command, run_tracked
+from common import BudgetReached, budget_gate, config, log, now, read_jsonl, spend, var
+from drive import ModelGone, RetryOnce, UsageLimit
+from modelrun import NO_NETWORK, claude_env, claude_usage, classify, fill, role_command, run_tracked
 
 HERE = Path(__file__).resolve().parent
 OUTPUT = ".factory-crew-{name}.json"
@@ -33,6 +34,10 @@ CLAIMS = ("MATCH", "PARTIAL", "MISMATCH", "UNVERIFIABLE")
 
 class CrewRefused(ValueError):
     """An agent's answer broke its form, or its verdict blocks the step."""
+
+
+class CrewMachinery(CrewRefused):
+    """The crew run failed for a machinery cause (a model error, a denied tool, no answer file)."""
 
 
 def load(root=None):
@@ -115,7 +120,8 @@ def record(root, name, event, subject, verdict, receipt, ok=True, note=""):
             "note": note[:300], **{k: receipt.get(k) for k in ("model", "tool", "prompt_sha", "cost_usd")}}
     with (path / f"{name}.jsonl").open("a") as stream:
         stream.write(json.dumps(line) + "\n")
-    log(Path(root), event="crew", agent=name, trigger=event, subject=subject, verdict=verdict, ok=ok)
+    log(Path(root), event="crew", agent=name, trigger=event, subject=subject, verdict=verdict, ok=ok,
+        cost_usd=receipt.get("cost_usd"), model=receipt.get("model"))
 
 
 def remember(root, name, line):
@@ -126,9 +132,30 @@ def remember(root, name, line):
             stream.write(f"- {now()[:10]}: {' '.join(str(line).split())[:200]}\n")
 
 
+def crew_card(root, name, subject, cause, detail):
+    """One card per crew agent and subject after a refusal; while it is open the agent does not run again on
+    that subject (a refused answer is never retried in a loop that spends money)."""
+    folder = var(root) / "asks"
+    folder.mkdir(parents=True, exist_ok=True)
+    card = folder / f"crew-{name}-{subject}.md"
+    card.write_text(f"# {name} stopped on {subject}: {cause}\n\nFor: orchestrator\nKind: crew-stop\nState: {cause}\n"
+                    f"At: {now()}\nOutcome: {' '.join(str(detail).split())[:400]}\n\n"
+                    f"Fix the cause, then close this card (python3 factory/asks.py close crew-{name}-{subject} --answer ...) "
+                    "and ask code again. The human is not asked.\n")
+    return card
+
+
 def run_agent(root, name, event, subject, context, workdir=None, run=subprocess.run):
-    """Run one crew agent with the model pinned for its role; return (data, verdict). Never falls back."""
+    """Run one crew agent with the model pinned for its role; return (data, verdict). Never falls back.
+    Limits come from factory.toml (crew_max_turns, max_budget_crew_usd); the daily budget is checked first."""
     root, crew, cfg = Path(root), load(), config(root)
+    open_card = var(root) / "asks" / f"crew-{name}-{subject}.md"
+    if open_card.exists():
+        raise CrewRefused(f"{name} stopped on {subject} earlier; fix the cause and close the card {open_card.name} first")
+    try:
+        budget_gate(root, cfg)
+    except BudgetReached as reached:
+        raise CrewRefused(str(reached)) from reached
     agent = crew["agents"][name]
     role = cfg["roles"][agent["uses_role"]]
     workdir = Path(workdir or root)
@@ -147,7 +174,7 @@ def run_agent(root, name, event, subject, context, workdir=None, run=subprocess.
     if tool == "codex":
         template["tools"] = [agent["sandbox"]]
     command = role_command(template, {"model": role["model"], "effort": agent["effort"], "no_network": NO_NETWORK,
-                                      "max_turns": 40, "max_budget": cfg["max_budget_review_usd"]})
+                                      "max_turns": cfg["crew_max_turns"], "max_budget": cfg["max_budget_crew_usd"]})
     env = claude_env(f"crew:{name}")
     env["FACTORY_CREW_OUTPUT"] = str(output)
     receipt = {"model": role["model"], "tool": tool, "prompt_sha": hashlib.sha256(prompt_path.read_bytes()).hexdigest()[:12]}
@@ -158,16 +185,30 @@ def run_agent(root, name, event, subject, context, workdir=None, run=subprocess.
     else:
         result = run(command, cwd=workdir, input=prompt, env=env, capture_output=True, text=True,
                      timeout=cfg["review_timeout_minutes"] * 60, check=False)
-    _, extra = classify(result.returncode, result.stdout, result.stderr, role.get("output", "claude-json"))
-    receipt.update(cost_usd=extra.get("cost_usd"), minutes=round((time.monotonic() - started) / 60, 2))
+    _, usage = claude_usage(result.stdout) if role.get("output", "claude-json") == "claude-json" else ("", {})
+    spend(root, f"crew:{name}", usage.get("cost_usd"))
+    receipt.update(cost_usd=usage.get("cost_usd"), minutes=round((time.monotonic() - started) / 60, 2))
     try:
+        try:
+            _, extra = classify(result.returncode, result.stdout, result.stderr, role.get("output", "claude-json"))
+        except (RetryOnce, UsageLimit, ModelGone) as error:
+            raise CrewMachinery(f"the model run failed: {error}") from error
+        if not output.exists() and agent["form"] != "brief":
+            cause = f"denied a tool: {extra['first_denial']}" if extra.get("denials") else "wrote no answer file"
+            raise CrewMachinery(f"{name} {cause}")
         data = json.loads(output.read_text()) if agent["form"] != "brief" or output.exists() else {}
         verdict = check_form(agent["form"], data, context)
     except (OSError, ValueError, CrewRefused) as error:
+        cause = "machinery" if isinstance(error, CrewMachinery) else "answer refused"
         record(root, name, event, subject, "refused", receipt, ok=False, note=str(error))
+        crew_card(root, name, subject, cause, error)
         raise CrewRefused(f"{name}: {error}") from error
     finally:
         output.unlink(missing_ok=True)
+        try:
+            budget_gate(root, cfg)
+        except BudgetReached:
+            pass
     record(root, name, event, subject, verdict, receipt)
     remember(root, name, data.get("memory_line"))
     return data, verdict
@@ -194,22 +235,43 @@ def plan_hash(root):
     return digest.hexdigest()[:16]
 
 
+def planning(root, row):
+    """The planning step is required: the row must be a slice of a valid plan/slice-matrix.json. Only
+    planning = "skip" in factory.toml lets a row through without one, and the skip is recorded."""
+    from consistency import plan_problem
+    if config(root)["planning"] == "skip":
+        log(Path(root), event="planning_skipped", row=row, note='factory.toml planning = "skip"')
+        return 'skipped (factory.toml planning = "skip"): no planning matrix checked this row'
+    matrix = Path(root) / "plan/slice-matrix.json"
+    if not matrix.exists():
+        raise CrewRefused(f"no planning matrix: plan {row} with the slice-matrix skill into plan/slice-matrix.json, "
+                          'or set planning = "skip" in factory.toml to cut without one (the skip is recorded)')
+    problem = plan_problem(matrix)
+    if problem:
+        raise CrewRefused(f"plan/slice-matrix.json fails the plan check: {problem}")
+    if row not in [item["id"] for item in json.loads(matrix.read_text())["slices"]]:
+        raise CrewRefused(f"row {row} is not a slice in plan/slice-matrix.json; plan it first")
+    return "planned"
+
+
 def before_cut(root, row, row_text, run=subprocess.run):
-    """Sweeper Sid first; a done verdict closes the row only after code re-runs its evidence command."""
+    """Planning first; then Sweeper Sid (a done verdict closes the row only after code re-runs its evidence
+    command) and the plan coverage auditor."""
     from tick import mark_row
+    plan = planning(root, row)
     data, verdict = run_agent(root, "sweeper-sid", "before_cut", row, {"row": row, "text": row_text}, run=run)
     if verdict == "done":
         check = subprocess.run(["bash", "-c", data["evidence_command"]], cwd=root, capture_output=True, text=True, timeout=600)
         if check.returncode == 0:
             mark_row(root, row, f"done (already done: {data['criterion']})")
             record(root, "sweeper-sid", "evidence_rerun", row, "confirmed", {})
-            return {"row": row, "already_done": True, "criterion": data["criterion"]}
+            return {"row": row, "already_done": True, "criterion": data["criterion"], "planning": plan}
         record(root, "sweeper-sid", "evidence_rerun", row, "refuted", {}, ok=False,
                note=f"exit {check.returncode}: {check.stdout[-200:]}")
     _, coverage = run_agent(root, "plan-coverage-auditor", "before_cut", row,
                             {"row": row, "text": row_text, "plan_hash": plan_hash(root)}, run=run)
     record(root, "plan-coverage-auditor", "plan_hash", row, plan_hash(root), {})
-    return {"row": row, "already_done": False, "coverage": coverage}
+    return {"row": row, "already_done": False, "coverage": coverage, "planning": plan}
 
 
 def cut_refusal(root, row):

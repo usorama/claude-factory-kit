@@ -3,6 +3,21 @@
 # and writes them into the project's factory.toml with a fixed rule (see core/probe.py).
 preset = "claude-only"
 
+[settings]
+max_budget_build_usd = 1.0
+max_budget_review_usd = 1.5
+max_budget_crew_usd = 0.75
+daily_budget_usd = 15.0
+max_turns_build = 40
+max_turns_review = 30
+crew_max_turns = 20
+
+[expected_usd]
+build = 0.16
+review = 0.38
+crew_per_row = 0.61
+measured = "2026-10-07, Claude Code 2.1.290: builder claude-sonnet-5-5 (medium), reviewer claude-opus-5-5 (high), crew on those two"
+
 [roles.chief-of-staff]
 tool = "claude"
 tier = "strong"

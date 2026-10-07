@@ -69,7 +69,7 @@ def test_a_usage_limit_pauses_model_steps_and_the_daily_budget_holds_them_with_o
     assert entry["state"] == "red" and entry["attempts"] == 0 and common.paused_until(root)
     assert tick.tick_once(root, runners_all(limited))["held"] == 1
     (common.var(root) / "paused-until").unlink()
-    common.log(root, event="end", unit="x", step="build", cost_usd=99.0)
+    common.spend(root, "builder", 99.0)  # every model run's cost goes to the spend ledger
     line = tick.tick_once(root, runners_all(limited))
     assert line["held"] == 1 and line["idle_reason"].startswith("daily budget reached")
     tick.tick_once(root, runners_all(limited))

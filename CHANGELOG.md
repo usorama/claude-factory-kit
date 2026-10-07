@@ -1,3 +1,18 @@
+## 1.2.1 - 2026-10-07
+Fixes from the first real Claude-only run (Claude Code 2.1.290). Each has a test and a sabotage (FIXES.md part 3).
+- Direct landing is plain git: the exact tested commit is pushed with --force-with-lease, no gh, any host. GitHub
+  modes are pr_merge, auto and pr_only. Init names the origin's host and the modes that work there.
+- Budget: every model run, crew included, goes to a spend ledger at once; the daily cap is checked before and after
+  every run; reaching it raises one card and nothing starts. Reports read costs from the ledger, never twice.
+- Crew permissions: answer files via Edit(.factory-crew-*) for every agent (Write(...) never matches; the bare "Edit"
+  deny is gone); permissions travel on the command line because new work folders are untrusted (verified for real).
+- A crew refusal stops at once with one card and is not retried while the card is open; crew turns and budget come
+  from factory.toml. Review-note rows are not triaged at model cost.
+- Python caches are ignored by the build check and restored before a catch-up; init warns about tracked caches.
+- Presets ship caps that fit them and the measured expected cost; init shows the cost per unit and per row.
+- Planning is required before a cut, or skipped explicitly and recorded.
+- A real-model smoke test (skipped unless FACTORY_REAL_SMOKE=1), run here for $0.65.
+
 ## 1.2.0 - 2026-10-07
 One tool-neutral core with thin adapters; the Claude Code plugin is one of them.
 - Adapters: Claude Code plugin (this repo is its marketplace; commands /factory-init, /factory-install-clock,

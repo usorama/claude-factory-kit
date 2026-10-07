@@ -6,18 +6,20 @@
 - merged-result suite: join the unit with the fetched main in a temporary worktree and
   run the whole suite there. Two changes can each pass alone and fail together.
 - the merge names the exact head commit, and is refused when main moved since the check.
-- landing modes (factory.toml "landing"): direct merges now; auto asks GitHub to merge once the
-  branch protection rules are met (required reviews, status checks); pr_only opens the PR and
-  leaves the merge to people. auto and pr_only end in state pr_open; watch() sees the merge later.
+- landing modes (factory.toml "landing"): direct pushes the tested commit with plain git (any host:
+  GitHub, GitHub Enterprise, GitLab, a bare repo; no gh); pr_merge opens a GitHub PR and merges it
+  now; auto asks GitHub to merge once branch rules pass; pr_only leaves the merge to people.
+  auto and pr_only end in state pr_open; watch() sees the merge later.
 - a failing gh call is machinery (GhFailed), never the unit's fault; its stderr goes on the card.
 """
 import json
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
-from common import git
+from common import LANDINGS, git
 from testrun import base_id, failed, run
 
 
@@ -33,9 +35,20 @@ class MainMoved(RuntimeError):
     """Main moved during landing; try again next tick, no attempt is used."""
 
 
+def restore_caches(worktree):
+    """Undo changes to byte-code caches a repo tracks (a test run rewrites them), so they never block a rebase
+    or count as the unit's change. Returns the restored paths."""
+    tracked = [p for p in git(worktree, "ls-files", "-m").stdout.split()
+               if "__pycache__" in Path(p).parts or p.endswith((".pyc", ".pyo"))]
+    if tracked:
+        git(worktree, "checkout", "--", *tracked)
+    return tracked
+
+
 def catch_up(worktree, base, check_base):
     """Return (refusal or None, the cut commit to compare against after the replay).
     Uses origin/<base> as last fetched: the tick fetches once, landing fetches again (one at a time)."""
+    restore_caches(worktree)
     remote = f"origin/{base}"
     if git(worktree, "merge-base", "--is-ancestor", remote, "HEAD", check=False).returncode == 0:
         return None, check_base
@@ -61,24 +74,60 @@ def patch_id(worktree, base):
     return out.split()[0] if out.strip() else ""
 
 
-def merged_suite(worktree, fetched, tolerated):
+def merged_suite(worktree, fetched, tolerated, method="merge", message="factory: land unit"):
+    """Build the exact commit that will land (the unit joined with the fetched base) and run the whole
+    suite on it. Returns that commit: what is tested is what is pushed."""
     head = git(worktree, "rev-parse", "HEAD").stdout.strip()
+    ident = ["-c", "user.name=factory", "-c", "user.email=factory@localhost", "-c", "core.hooksPath=/dev/null"]
     with tempfile.TemporaryDirectory(prefix="factory-land-") as folder:
         merged = Path(folder) / "merged"
         git(worktree, "worktree", "add", "-q", "--detach", str(merged), fetched)
         try:
-            joined = git(merged, "-c", "user.name=factory", "-c", "user.email=factory@localhost",
-                         "merge", "-q", "--no-edit", head, check=False)
+            if method == "squash":
+                joined = git(merged, *ident, "merge", "-q", "--squash", head, check=False)
+                if joined.returncode == 0:
+                    joined = git(merged, *ident, "commit", "-q", "-m", message, check=False)
+            else:
+                how = ["--ff-only"] if method == "rebase" else ["--no-ff", "-m", message]
+                joined = git(merged, *ident, "merge", "-q", *how, head, check=False)
             if joined.returncode != 0:
-                raise LandRefused("the unit does not merge cleanly with main")
+                raise LandRefused(f"the unit does not join main by {method}: {joined.stderr.strip()[-200:]}")
             code, records, collect_errors, _ = run(merged)
             if code == 5:
                 raise LandRefused("the merged result selects no tests")
             bad = collect_errors + [t for t in failed(records) if base_id(t) not in set(tolerated)]
             if bad:
                 raise LandRefused(f"{bad[0]} fails on the merged result with main")
+            return git(merged, "rev-parse", "HEAD").stdout.strip()
         finally:
             git(worktree, "worktree", "remove", "--force", str(merged), check=False)
+
+
+def push_direct(worktree, commit, base, fetched):
+    """Land without any forge: push the tested commit to origin/<base>, only if <base> is still what was
+    fetched (--force-with-lease names the expected value, so a moved main is refused, never overwritten)."""
+    pushed = git(worktree, "push", "-q", f"--force-with-lease=refs/heads/{base}:{fetched}", "origin",
+                 f"{commit}:refs/heads/{base}", check=False)
+    if pushed.returncode != 0:
+        raise MainMoved(f"{base} moved since the check (push refused); landing tries again next tick")
+    git(worktree, "fetch", "-q", "origin", base, check=False)
+
+
+def host_modes(root):
+    """(host, landing modes that work): plain git works everywhere; pull request modes need gh signed in
+    for the origin's host (github.com or a GitHub Enterprise host)."""
+    url = git(root, "remote", "get-url", "origin", check=False).stdout.strip()
+    if not url:
+        return "none (no origin yet)", ["direct"]
+    match = re.match(r"^(?:https?://(?:[^@/]+@)?|ssh://(?:[^@/]+@)?|[^@/]+@)([^/:]+)", url)
+    host = match.group(1) if match and not url.startswith(("/", ".", "file:")) else "local"
+    if host == "local":
+        return host, ["direct"]
+    signed_in = subprocess.run(["gh", "auth", "status", "--hostname", host], capture_output=True, text=True,
+                               check=False) if shutil.which("gh") else None
+    if signed_in is not None and signed_in.returncode == 0:
+        return host, list(LANDINGS)
+    return host, ["direct"]
 
 
 def gh_call(gh, worktree, *args):
@@ -91,28 +140,32 @@ def gh_call(gh, worktree, *args):
 
 
 def land(worktree, unit, base, tolerated, review_text, gh="gh", pr=None, mode="direct", method="merge"):
-    """Return (PR address, merged now?). The caller already caught up and checked the unit."""
+    """Return (PR address or the landed commit, merged now?). The caller already caught up and checked the unit.
+    direct: plain git, no forge (GitHub, GitHub Enterprise, GitLab, a bare repo). pr_merge, auto, pr_only: GitHub."""
     fetched = git(worktree, "rev-parse", f"origin/{base}").stdout.strip()
-    merged_suite(worktree, fetched, tolerated)
+    title = unit.get("title") or unit["paragraph"].split(".")[0]
+    tested = merged_suite(worktree, fetched, tolerated, method, f"{title}\n\nFactory review form:\n{review_text}")
+    if mode == "direct":
+        push_direct(worktree, tested, base, fetched)
+        return tested, True
     branch = git(worktree, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     head = git(worktree, "rev-parse", "HEAD").stdout.strip()
     git(worktree, "push", "-q", "-u", "--force-with-lease", "origin", branch)
     if not pr:
         body = "\n".join([unit["paragraph"], "", "Tests:", *unit["tests"], "", "Files:", *unit["files"],
                           "", f"Estimate: {unit.get('estimate_minutes', '?')} minutes"])
-        pr = gh_call(gh, worktree, "pr", "create", "--base", base, "--head", branch,
-                     "--title", unit.get("title") or unit["paragraph"].split(".")[0], "--body", body)
+        pr = gh_call(gh, worktree, "pr", "create", "--base", base, "--head", branch, "--title", title, "--body", body)
     number = pr_number(pr)
     gh_call(gh, worktree, "pr", "comment", number, "--body", "Factory review form:\n" + review_text)
     if mode == "pr_only":
         return pr, False
-    if mode == "direct":
+    if mode == "pr_merge":
         remote_now = git(worktree, "ls-remote", "origin", f"refs/heads/{base}").stdout.split()
         if not remote_now or remote_now[0] != fetched:
             raise MainMoved(f"{base} moved since the check; landing tries again next tick")
     auto = ["--auto"] if mode == "auto" else []
     gh_call(gh, worktree, "pr", "merge", number, *auto, f"--{method}", "--match-head-commit", head)
-    return pr, mode == "direct"
+    return pr, mode == "pr_merge"
 
 
 def pr_number(pr):

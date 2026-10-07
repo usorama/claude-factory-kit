@@ -118,6 +118,12 @@ def test_the_agent_guard_refuses_a_model_or_a_code_only_role(tmp_path, tool_inpu
     assert result.returncode == code, result.stderr
 
 
+def edit(path, old, new):
+    text = path.read_text()
+    assert old in text, old
+    path.write_text(text.replace(old, new, 1))
+
+
 def sabotaged(tmp_path, change):
     copy = tmp_path / "kit"
     shutil.copytree(REPO, copy, ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache"))
@@ -134,6 +140,12 @@ def sabotaged(tmp_path, change):
     (lambda c: (c / "adapters/generic/bin/factory").write_text("#!/bin/sh\nexit 3\n"), "--help fails"),
     (lambda c: (c / "adapters/codex/install.sh").unlink(), "install.sh is missing"),
     (lambda c: (c / "core/templates/prompts/crew/quill.v1.md").unlink(), "does not exist"),
+    (lambda c: edit(c / "core/factory/crew.toml", '"Bash(git commit *)", "WebFetch"', '"Bash(git commit *)", "Edit", "WebFetch"'),
+     "denies Edit or Write outright"),
+    (lambda c: edit(c / "core/factory/crew.toml", '"Edit(.ai/specs/*)"', '"Write(.ai/specs/*)"'), "never matches in Claude Code"),
+    (lambda c: edit(c / "core/factory/crew.toml", '"Bash(ls *)", "Edit(.factory-crew-*)"]\nsandbox = "workspace-write"\n\n[agents.sweeper-sid]',
+                    '"Bash(ls *)"]\nsandbox = "workspace-write"\n\n[agents.sweeper-sid]'), "sorter-sam must be allowed Edit"),
+    (lambda c: edit(c / "core/factory/presets/claude-only.toml", '"--allowedTools", ', ''), "must carry --permission-mode and --allowedTools"),
 ])
 def test_a_broken_adapter_fails_its_check(tmp_path, change, expected):
     found = check_kit.problems(sabotaged(tmp_path, change))

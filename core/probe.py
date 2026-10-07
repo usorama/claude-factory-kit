@@ -42,20 +42,21 @@ def answered(tool, spec, model, run=subprocess.run):
     try:
         result = run(command, input=QUESTION, capture_output=True, text=True, timeout=180)
     except (OSError, subprocess.TimeoutExpired) as error:
-        return False, str(error)[:200]
+        return False, str(error)[:200], None
     if result.returncode:
-        return False, (result.stderr or result.stdout).strip()[-200:]
+        return False, (result.stderr or result.stdout).strip()[-200:], None
     if spec["output"] == "claude-json":
         try:
             data = json.loads(result.stdout)
         except ValueError:
-            return False, "no JSON answer"
+            return False, "no JSON answer", None
         ok = not data.get("is_error") and data.get("subtype") == "success"
-        return ok, "" if ok else str(data.get("result"))[:200]
+        cost = data.get("total_cost_usd")
+        return ok, ("" if ok else str(data.get("result"))[:200]), cost
     events = [json.loads(line) for line in result.stdout.splitlines() if line.strip().startswith("{")]
     failed = [e for e in events if e.get("type") in ("turn.failed", "error")]
     ok = any(e.get("type") == "turn.completed" for e in events) and not failed
-    return ok, "" if ok else json.dumps(failed[:1])[:200]
+    return ok, ("" if ok else json.dumps(failed[:1])[:200]), None
 
 
 def probe(models=None, which=shutil.which, run=subprocess.run):
@@ -66,8 +67,9 @@ def probe(models=None, which=shutil.which, run=subprocess.run):
             report["tools"][tool] = {"available": False, "answered": [], "refused": {}}
             continue
         answers = {model: answered(tool, spec, model, run) for model in spec["candidates"]}
-        report["tools"][tool] = {"available": True, "answered": [m for m, (ok, _) in answers.items() if ok],
-                                 "refused": {m: why for m, (ok, why) in answers.items() if not ok}}
+        report["tools"][tool] = {"available": True, "answered": [m for m, (ok, _, _) in answers.items() if ok],
+                                 "refused": {m: why for m, (ok, why, _) in answers.items() if not ok},
+                                 "cost_usd": {m: cost for m, (_, _, cost) in answers.items() if cost is not None}}
     return report
 
 
@@ -116,14 +118,35 @@ def map_roles(preset, report):
 
 def roles_file(preset, report):
     roles, rows, same_tool = map_roles(preset, report)
-    data = {"preset": preset["preset"], "probed_at": report["at"]}
+    data = {"preset": preset["preset"], "probed_at": report["at"], **preset.get("settings", {})}
     if same_tool:
         data["same_tool_review"] = same_tool
+    if preset.get("expected_usd"):
+        data["expected_usd"] = preset["expected_usd"]
     data["roles"] = roles
     comment = ("Roles file written by `factory init` from the probe of " + report["at"] + ".\n"
                "Every model is an exact ID that answered on this machine. Change it only through\n"
                "`factory probe` + `factory roles accept`, or by hand with a reason in state.md.")
     return tomlw.dumps(data, comment), rows
+
+
+def cost_summary(cfg):
+    """Plain lines: the expected model cost per unit and per row, and what the daily budget covers."""
+    expected = cfg.get("expected_usd") or {}
+    per_unit = round(expected.get("build", 0) * 1.2 + expected.get("review", 0), 2)  # about one rebuild in five
+    lines = []
+    if per_unit:
+        lines.append(f"expected model cost: about ${per_unit} per unit (build ${expected.get('build', 0)}, "
+                     f"review ${expected.get('review', 0)}, one rebuild in five) plus about "
+                     f"${expected.get('crew_per_row', 0)} per row for triage and the before-cut checks")
+        budget = cfg.get("daily_budget_usd")
+        if budget:
+            lines.append(f"daily budget ${budget}: about {int(budget // (per_unit + 0.3))} units a day; "
+                         f"per-run caps build ${cfg.get('max_budget_build_usd')}, review ${cfg.get('max_budget_review_usd')}, "
+                         f"crew ${cfg.get('max_budget_crew_usd')}")
+    if expected.get("measured"):
+        lines.append(f"cost basis: {expected['measured']}")
+    return lines
 
 
 def load_preset(name):

@@ -1,0 +1,12 @@
+{
+ "_captured": "claude 2.1.290, claude -p --model claude-haiku-4-5 --permission-mode dontAsk in a fresh git folder never opened interactively (untrusted), Linux x86_64, 2026-10-07. Task: create .factory-crew-x.json.",
+ "stderr_every_run": "Ignoring 1 permissions.allow entry from .claude/settings.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust",
+ "results": {
+  "--allowedTools Edit(.factory-crew-*)": "file written, 0 denials",
+  "--allowedTools Write(.factory-crew-*)": "not written, 2 denials",
+  "--allowedTools Edit(.factory-crew-*) --disallowedTools Edit": "file written, 0 denials",
+  "--allowedTools Edit(./.factory-crew-*)": "file written, 0 denials",
+  "--allowedTools Read": "not written, 2 denials"
+ },
+ "conclusion": "Command-line permissions apply in an untrusted folder; the project settings allow list does not. A path write rule must be Edit(<path>); Write(<path>) never matches."
+}

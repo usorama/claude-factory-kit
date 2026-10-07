@@ -51,6 +51,32 @@ def problems(repo):
     for preset in sorted((repo / "core/factory/presets").glob("*.toml")):
         named += [r["prompt"] for r in tomllib.loads(preset.read_text())["roles"].values()]
     named.append(".ai/prompts/inspector-grumble-same-tool.v1.md")
+    lists = [("crew.toml", tomllib.loads((repo / "core/factory/crew.toml").read_text()))]
+    lists += [(p.name, tomllib.loads(p.read_text())) for p in sorted((repo / "core/factory/presets").glob("*.toml"))]
+    for source, data in lists:
+        launchers = list(data.get("commands", {}).items()) + [(n, r.get("command")) for n, r in data.get("roles", {}).items()]
+        rules = [t for a in data.get("agents", {}).values() for t in a.get("tools", [])]
+        rules += [t for r in data.get("roles", {}).values() for t in r.get("tools", []) + r.get("deny", [])]
+        for rule in rules:
+            if str(rule).startswith("Write("):
+                found.append(f"{source}: {rule} never matches in Claude Code; write rules are Edit(<path>)")
+        for name, command in launchers:
+            if not command or command[0] != "claude":
+                continue
+            if "--allowedTools" not in command or "--permission-mode" not in command:
+                found.append(f"{source}: the claude command of {name} must carry --permission-mode and --allowedTools "
+                             "(an unattended work folder is untrusted; its project allow list is ignored)")
+            denied = command[command.index("--disallowedTools") + 1:] if "--disallowedTools" in command else []
+            if "Edit" in denied or "Write" in denied:
+                found.append(f"{source}: the claude command of {name} denies Edit or Write outright, which also blocks "
+                             "the answer file the agent must write")
+    for name, agent in tomllib.loads((repo / "core/factory/crew.toml").read_text())["agents"].items():
+        if name == "inspector-grumble":
+            continue  # it is the reviewer role; its permissions come from the roles file
+        if "Edit(.factory-crew-*)" not in agent.get("tools", []):
+            found.append(f"crew.toml: {name} must be allowed Edit(.factory-crew-*) to write its answer file")
+        if agent.get("sandbox") == "read-only":
+            found.append(f"crew.toml: {name} has a read-only Codex sandbox but must write its answer file")
     for prompt in sorted(set(named)):
         if not (repo / "core/templates/prompts" / prompt.removeprefix(".ai/prompts/")).is_file():
             found.append(f"the prompt {prompt} that a role or crew agent names does not exist in core/templates/prompts")

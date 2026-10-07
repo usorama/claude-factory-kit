@@ -1,4 +1,4 @@
-# Manifest (1.2.0)
+# Manifest (1.2.1)
 
 `<project>` paths show where `factory init` puts a file in a work repo.
 
@@ -12,6 +12,7 @@
 | MANIFEST.md, FIXES.md, REVIEW-fable.md | This list; what was done for every review item and every gap found; the independent review of 1.0.0 |
 | .claude-plugin/marketplace.json, plugin.json | The repo as a Claude Code marketplace holding the plugin `factory` (components in adapters/claude-code) |
 | pytest.ini, .gitignore | Run every test from the root; ignore caches |
+| tests/test_real_smoke.py | Real-model smoke test (real claude CLI): crew pass, tiny build and review, direct landing; skips unless FACTORY_REAL_SMOKE=1 |
 | tests/test_adapters.py | Kit check, plugin validation, fresh install from the local marketplace for every preset, Codex skills, generic CLI, agent guard, broken-adapter sabotages |
 
 ## core/ (tool-neutral)
@@ -29,7 +30,7 @@
 | planning/slice-matrix/ | The planning skill: SKILL.md, schema, checker and renderer, tests, 11 examples, 13 eval cases with a config-driven runner |
 | sample/ | The dry run: seed repo, two cut units, solutions, deterministic fake claude, codex and gh (`fakes/agent.py`) |
 | docs/ | Lessons format, retro procedure, backlog format, example lessons |
-| tests/ | 88 tests of the core (fixtures copied from real runs of claude and codex, including unknown-model answers) |
+| tests/ | 102 tests of the core, including the fixes from the first real run (test_real_run_fixes.py) (fixtures copied from real runs of claude and codex, including unknown-model answers and the 2.1.290 permission probe) |
 
 ## core/factory/ (in every project)
 | File | Purpose |

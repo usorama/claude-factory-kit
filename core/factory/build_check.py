@@ -16,9 +16,15 @@ class BuildCheckRefused(ValueError):
     """The finished unit does not meet its build checks."""
 
 
+def is_cache(path):
+    """Python byte-code caches are written by every test run; they are never the unit's change."""
+    return "__pycache__" in Path(path).parts or path.endswith((".pyc", ".pyo"))
+
+
 def changed_files(worktree, base):
     changed = set(git(worktree, "diff", "--name-only", base).stdout.split())
-    return changed | set(git(worktree, "ls-files", "--others", "--exclude-standard").stdout.split())
+    changed |= set(git(worktree, "ls-files", "--others", "--exclude-standard").stdout.split())
+    return {path for path in changed if not is_cache(path)}
 
 
 def build_check(unit_path, worktree, base, tolerated=(), guard=True, suite=True):

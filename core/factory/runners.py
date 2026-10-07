@@ -19,10 +19,11 @@ from pathlib import Path
 
 import crew
 from build_check import build_check
-from common import config, config_problem, git, label, read_queue, review_independence, var
+from common import (BudgetReached, budget_gate, config, config_problem, git, label, read_queue, review_independence,
+                    spend, var)
 from drive import Retry, RetryOnce
-from modelrun import FORM_NAME, NO_NETWORK, claude_env, classify, fill, role_command, run_tracked
-from land import GhFailed, MainMoved, catch_up, land, patch_id, pr_state
+from modelrun import FORM_NAME, NO_NETWORK, claude_env, claude_usage, classify, fill, role_command, run_tracked
+from land import GhFailed, MainMoved, catch_up, land, patch_id, pr_state, restore_caches
 from red_check import red_check, tolerated_tests
 from review import KINDS, file_notes, parse, summary
 
@@ -69,6 +70,10 @@ def make_runners(root, gh="gh"):
                    "settings": {"max_turns": cfg[f"max_turns_{short}"], "max_budget_usd": cfg[f"max_budget_{short}_usd"]}}
         if name == "reviewer":
             receipt["independence"] = review_independence(cfg)[0]
+        try:
+            budget_gate(root, cfg)
+        except BudgetReached as reached:  # nothing starts; the unit waits without using an attempt
+            raise Retry(str(reached), counts=False) from reached
         started = time.monotonic()
         try:
             result = run_tracked(command, worktree, prompt, env, minutes * 60, var(root) / "pids" / f"{label_of(worktree)}.pid")
@@ -77,6 +82,11 @@ def make_runners(root, gh="gh"):
                 return None, {**receipt, "minutes_model": minutes, "timed_out": True}
             raise RetryOnce(f"{name} timed out after {minutes} minutes") from error
         receipt["minutes_model"] = round((time.monotonic() - started) / 60, 2)
+        spend(root, name, claude_usage(result.stdout)[1].get("cost_usd") if role["output"] == "claude-json" else None)
+        try:
+            budget_gate(root, cfg)  # crossing the cap raises the one card now; the next run will not start
+        except BudgetReached:
+            pass
         text, extra = classify(result.returncode, result.stdout, result.stderr, role["output"])
         return text, {**extra, **receipt}
 
@@ -128,6 +138,7 @@ def make_runners(root, gh="gh"):
             return False, "the builder changed no unit file", extra
         git(worktree, "-c", "user.name=factory", "-c", "user.email=factory@localhost",
             "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", f"{name}: build round {entry['attempts'] + 1}")
+        restore_caches(worktree)
         return True, report[-2000:], extra
 
     def check(entry):
@@ -206,7 +217,8 @@ def make_runners(root, gh="gh"):
             raise RetryOnce(str(error)) from error
         except ValueError as error:
             return False, str(error), {}
-        return True, entry["pr"], {"pr": entry["pr"], **({} if merged else {"to_state": "pr_open"})}
+        landed = {"landed_commit": entry["pr"]} if cfg["landing"] == "direct" else {"pr": entry["pr"]}
+        return True, entry["pr"], {**landed, **({} if merged else {"to_state": "pr_open"})}
 
     def watch(entry):
         """A PR left to GitHub (auto) or to people (pr_only): landed when merged."""

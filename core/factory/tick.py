@@ -23,7 +23,8 @@ from pathlib import Path
 
 import asks
 import drive
-from common import (ACTIVE, STOPPED, Lock, config, config_problem, git, label, log, now, paused_until,
+from common import (ACTIVE, STOPPED, BudgetReached, Lock, budget_gate, config, config_problem, git, label, log, now,
+                    paused_until,
                     queue_lock, read_queue, spent_today,
                     unit_row, var, write_queue)
 from unit_check import UnitRefused, check_unit
@@ -146,14 +147,10 @@ def hold_reason(root, cfg):
     until = paused_until(root)
     if until:
         return f"usage limit: model steps paused until {until.isoformat()}"
-    spent = spent_today(root)
-    if spent >= cfg["daily_budget_usd"]:
-        card = asks.folder(root) / f"DEC-budget-{now()[:10]}.md"
-        if not card.exists() and not (asks.folder(root) / "answered" / card.name).exists():
-            asks.decide(root, f"budget-{now()[:10]}", f"Daily model budget reached ({spent} of "
-                        f"{cfg['daily_budget_usd']} US dollars). Raise it for today?",
-                        "No; builds and reviews continue tomorrow. Checks and landings go on today.")
-        return f"daily budget reached: {spent} of {cfg['daily_budget_usd']} US dollars"
+    try:
+        budget_gate(root, cfg)
+    except BudgetReached as reached:
+        return str(reached)
     return None
 
 
@@ -214,6 +211,8 @@ def triage_next(root):
     """Sorter Sam on the first todo or building row with no triage record (one per tick)."""
     import crew
     for row, status in backlog(root).items():
+        if row.startswith("N-"):  # a review note waits for the chief of staff; triage costs a model run
+            continue
         if status in ("todo", "building") and crew.latest(root, "sorter-sam", row) is None:
             try:
                 crew.run_agent(root, "sorter-sam", "row_untriaged", row, {"row": row, "text": backlog_text(root, row)})

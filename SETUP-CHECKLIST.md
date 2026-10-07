@@ -53,9 +53,9 @@ Do the items in order. Each has a **check**; do not go on until the check gives 
     Commit `factory.toml` so no second machine starts a clock.
     Check: it ends with `READY`; after 10 minutes `python3 factory/consistency.py` has no
     `clock_stale` or `ticks_skipped` finding.
-16. **Landing mode.** If main is protected (required reviews or checks), set `"landing": "auto"`
-    (GitHub merges when rules pass) or `"pr_only"` (people merge) in `factory.toml`, and
-    `"merge_method"` to what the repo allows. Use a bot or service account for `gh auth login` on
+16. **Landing mode.** `factory init` printed the origin's host and the modes that work there. `direct` (the
+    default) lands with plain git on any host. If main is a protected GitHub branch, set `landing = "auto"` (GitHub
+    merges when rules pass) or `"pr_only"` (people merge), or `"pr_merge"`, and `merge_method` to what the repo allows. Use a bot or service account for `gh auth login` on
     the clock host if people may not self-merge.
     Check: `gh api repos/<owner>/<your-repo>/branches/main/protection` matches your choice (404 means unprotected: `direct` works).
 

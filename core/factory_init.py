@@ -35,7 +35,7 @@ PROJECT_OWNED = {"state.md", "plan/backlog.md", "factory.toml", ".ai/lessons.jso
     f".ai/prompts/crew/{p.name}" for p in (CORE / "templates/prompts/crew").glob("*.md")}
 IMPORT_LINE = "@.ai/factory-agents.md"
 BEGIN, END = "<!-- factory:begin (managed by factory init; edit .ai/factory-agents.md) -->", "<!-- factory:end -->"
-IGNORE_LINES = ("var/", "__pycache__/", ".sabotage-tmp/", "*.factory-new", ".factory-review.json", ".factory-crew-*.json",
+IGNORE_LINES = ("var/", "__pycache__/", "*.pyc", ".sabotage-tmp/", "*.factory-new", ".factory-review.json", ".factory-crew-*.json",
                 "factory.toml.proposed")
 
 
@@ -96,8 +96,17 @@ def apply(project, overwrite=(), preset="claude-only", adapter="claude-code", pr
         text, rows = probe.roles_file(probe.load_preset(preset), report)
         (project / "var/factory").mkdir(parents=True, exist_ok=True)
         (project / "var/factory/probe.json").write_text(json.dumps(report, indent=1))
+        probe_cost = 0.0
+        with (project / "var/factory/spend.jsonl").open("a") as ledger:  # the probe's calls count like any model run
+            for tool, found in report["tools"].items():
+                for model, cost in (found.get("cost_usd") or {}).items():
+                    ledger.write(json.dumps({"at": report["at"], "who": f"probe:{model}", "cost_usd": cost}) + "\n")
+                    probe_cost += cost
+        if probe_cost:
+            done.append(f"model probe cost: ${round(probe_cost, 4)} (recorded in the spend ledger)")
         (project / "factory.toml").write_text(text)
         done += [f"role {r['role']}: {r['tool']}:{r['model']} ({r['why']})" for r in rows]
+        done += probe.cost_summary(tomllib.loads(text))
     for (source, target), row in zip(items(preset, adapter), plan(project, preset, adapter)):
         path = project / target
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -139,6 +148,16 @@ def apply(project, overwrite=(), preset="claude-only", adapter="claude-code", pr
         shutil.copy2(CORE / "templates/pre-commit", hook)
         hook.chmod(0o755)
         done.append("installed the pre-commit hook")
+    sys.path.insert(0, str(project / "factory"))
+    import land
+    host, modes = land.host_modes(project)
+    done.append(f"origin host: {host}; landing modes that work here: {', '.join(modes)}"
+                + ("" if len(modes) > 1 else " (pull request modes need gh signed in to a GitHub host)"))
+    caches = [p for p in subprocess.run(["git", "ls-files"], cwd=project, capture_output=True, text=True).stdout.split()
+              if "__pycache__" in Path(p).parts or p.endswith((".pyc", ".pyo"))]
+    if caches:
+        done.append(f"WARNING: the repo tracks {len(caches)} Python cache file(s), for example {caches[0]}. Remove them once: "
+                    "git rm -r --cached $(git ls-files '*.pyc' '*/__pycache__/*') and commit; .gitignore now ignores them.")
     pin = project / "factory/toolchain.json"
     if not pin.exists():
         seen = json.loads(subprocess.run([sys.executable, "factory/fingerprint.py"], cwd=project,

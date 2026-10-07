@@ -58,6 +58,11 @@ Presets (`core/factory/presets/`) hold role requirements, not model names. Examp
 Sonnet 5, Sonnet 4.6 and Haiku 5, claude-only maps the chief of staff and builder to `claude-sonnet-5-5`, the reviewer
 to `claude-sonnet-5` ("same maker, different version") and the summarizer to `claude-haiku-5`.
 
+## Real smoke test (about $0.65, three minutes)
+`FACTORY_REAL_SMOKE=1 python3 -m pytest -q tests/test_real_smoke.py -s` runs the real `claude` CLI: one crew pass
+before the cut, one tiny unit built (Haiku 4.5) and reviewed (Sonnet 5.5), landed with plain git onto a local origin.
+It skips unless the variable is set and both models answer.
+
 ## First run: the dry run (no model calls)
 ```
 python3 core/sample/dry_run.py /tmp/factory-dry-run --preset claude-only     # also codex-only, claude-codex, generic
@@ -103,3 +108,8 @@ Pause the clock (`crontab -e`, or unload the launchd job). Stop one unit: `tick.
 | Unit `needs_split`: "over twice its estimate" | The unit was too big. Split it; the dashboard shows estimate against actual. |
 | Red check `network_isolation: none` | bubblewrap cannot start here; tests can reach the network (RULES 14). |
 | `retry once: gh pr merge failed: ... policy` | main is protected: set `landing = "auto"` or `"pr_only"` in factory.toml. |
+| `gh pr create failed: none of the git remotes ... known GitHub host` | Use `landing = "direct"` (plain git; works with GitLab, GitHub Enterprise without gh, a bare repo). `factory init` lists the modes that work. |
+| `claude -p` warns "Ignoring ... permissions.allow entries ... not trusted" | Expected in a new work folder: the factory passes every permission on the command line, so the warning changes nothing. |
+| DEC-budget card | The daily budget is spent (builds, reviews and crew all count). Raise `daily_budget_usd` or wait for tomorrow. |
+| `crew-<agent>-<row>` card | A crew agent was refused once (for example it could not write its answer file). Fix the cause, close the card, run the command again. |
+| `before-cut` refused: "no planning matrix" | Plan the row with the slice-matrix skill, or set `planning = "skip"` in factory.toml (recorded in the daily report). |

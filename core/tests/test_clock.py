@@ -153,7 +153,8 @@ def test_the_shipped_dashboard_page_passes_its_own_static_gate():
 
 
 @pytest.mark.parametrize("args", [["--preset", "claude-only"], ["--preset", "codex-only"], ["--preset", "claude-codex"],
-                                  ["--preset", "generic"], ["--landing", "auto"], ["--landing", "pr_only"]])
+                                  ["--preset", "generic"], ["--landing", "pr_merge"], ["--landing", "auto"],
+                                  ["--landing", "pr_only"]])
 def test_the_dry_run_lands_both_units_end_to_end(tmp_path, args):
     result = subprocess.run([sys.executable, str(CORE / "sample/dry_run.py"), str(tmp_path / "run"), *args],
                             capture_output=True, text=True, timeout=600)

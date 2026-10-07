@@ -6,7 +6,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from conftest import CORE, GREEN, WORK_PC, git, roles_project, unit_files
+from conftest import CORE, GREEN, WORK_PC, git, plan_matrix, roles_project, unit_files
 
 import common
 import crew
@@ -47,6 +47,7 @@ def test_the_probe_counts_only_models_that_really_answered(tmp_path):
     report = probe.probe(which=lambda name: True, run=run)
     assert report["tools"]["claude"]["answered"] == ["claude-sonnet-5"]
     assert report["tools"]["codex"]["answered"] == ["gpt-6-luna"]
+    assert report["tools"]["claude"]["cost_usd"] == {"claude-sonnet-5": 0.0}  # the fake reports cost 0; real calls cost
 
 
 @pytest.mark.parametrize("fixture, output", [("claude-json-unknown-model.json", "claude-json"),
@@ -115,7 +116,8 @@ def test_each_trigger_starts_exactly_the_expected_agents(event, files):
 
 
 def crew_project(make_repo, sweep):
-    root = make_repo({"plan/backlog.md": "| ID | Status |\n|---|---|\n| R1 | building |\n", "tests/test_ok.py": GREEN})
+    root = make_repo({"plan/backlog.md": "| ID | Status |\n|---|---|\n| R1 | building |\n", "tests/test_ok.py": GREEN,
+                      "plan/slice-matrix.json": plan_matrix("R1")})
     roles_project(root)
 
     def run(command, cwd, input, env, **kw):

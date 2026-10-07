@@ -39,6 +39,18 @@ def position_time(text):
     return datetime.fromisoformat(f"{match.group(1).replace(' ', 'T')}{zone}")
 
 
+def plan_problem(matrix):
+    """The first line of the plan checker's complaint, or None when the plan passes (exit 0)."""
+    here = Path(__file__).resolve().parent
+    validator = here / "planning/validate_matrix.py"
+    if not validator.exists():  # running from the kit itself, not a project
+        validator = here.parent / "planning/slice-matrix/scripts/validate_matrix.py"
+    checked = subprocess.run([sys.executable, str(validator), str(matrix)], capture_output=True, text=True)
+    if checked.returncode == 0:
+        return None
+    return ((checked.stdout + checked.stderr).strip().splitlines() or [f"exit {checked.returncode}"])[0][:300]
+
+
 def check(root, clock=None):
     root, cfg = Path(root), config(root)
     clock = clock or datetime.now(timezone.utc)
@@ -93,13 +105,9 @@ def check(root, clock=None):
              f"Cut units ahead: keep at least {cfg['queue_floor']} in the queue before going idle.")
     matrix = root / "plan/slice-matrix.json"
     if matrix.exists():
-        here = Path(__file__).resolve().parent
-        validator = here / "planning/validate_matrix.py"
-        if not validator.exists():  # running from the kit itself, not a project
-            validator = here.parent / "planning/slice-matrix/scripts/validate_matrix.py"
-        checked = subprocess.run([sys.executable, str(validator), str(matrix)], capture_output=True, text=True)
-        if checked.returncode not in (0, 3):
-            find("plan_invalid", "plan/slice-matrix.json", (checked.stdout + checked.stderr).strip().splitlines()[0][:300],
+        problem = plan_problem(matrix)
+        if problem:
+            find("plan_invalid", "plan/slice-matrix.json", problem,
                  "Fix every rule the plan check names until python3 factory/planning/validate_matrix.py exits 0.")
     state_md = root / "state.md"
     if state_md.exists():

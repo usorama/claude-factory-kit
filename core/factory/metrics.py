@@ -20,8 +20,8 @@ from tick import backlog
 
 SOURCES = {
     "now": ["var/factory/queue.json", "var/factory/ticks.log"],
-    "daily": ["var/factory/log.jsonl", "var/factory/ticks.log", "var/factory/asks", ".ai/lessons.jsonl"],
-    "metrics": ["var/factory/log.jsonl", "var/factory/ticks.log", "var/factory/queue.json"],
+    "daily": ["var/factory/log.jsonl", "var/factory/spend.jsonl", "var/factory/ticks.log", "var/factory/asks", ".ai/lessons.jsonl"],
+    "metrics": ["var/factory/log.jsonl", "var/factory/spend.jsonl", "var/factory/ticks.log", "var/factory/queue.json"],
     "decisions": ["var/factory/asks"],
     "lessons": [".ai/lessons.jsonl"],
     "consistency": ["var/factory/queue.json", "var/factory/ticks.log", "var/factory/asks", "state.md",
@@ -43,7 +43,7 @@ def factory_numbers(root):
     review_errors = [e for e in events if e.get("event") == "end" and e.get("step") == "review"
                      and str(e.get("outcome", "")).startswith(("retry once", "error"))]
     landed = [e for e in events if e.get("to") == "landed"]
-    costs = [e["cost_usd"] for e in events if isinstance(e.get("cost_usd"), (int, float))]
+    costs = [e["cost_usd"] for e in read_jsonl(var(root) / "spend.jsonl") if isinstance(e.get("cost_usd"), (int, float))]
     steps = {}
     for event in events:
         if event.get("event") == "end" and isinstance(event.get("minutes"), (int, float)):
@@ -67,7 +67,7 @@ def factory_numbers(root):
         number("Escaped defects", sum(e.get("event") == "defect" for e in events), "defects",
                "Faults found on main in a unit that had landed (tick.py defect). Target: zero from day one."),
         number("Model cost recorded", round(sum(costs), 2), "US dollars",
-               "Sum of total_cost_usd reported by claude -p for builds and reviews."),
+               "Sum of total_cost_usd for every model run (builds, reviews and crew), from the spend ledger."),
     ]
     receipts = [{k: e.get(k) for k in ("at", "unit", "role", "tool", "model", "effort", "prompt", "prompt_sha",
                                         "independence", "cost_usd")}
