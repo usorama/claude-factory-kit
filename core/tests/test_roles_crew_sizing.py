@@ -1,6 +1,8 @@
 """1.2.0: the roles file and the model probe, reviewer independence, the crew's triggers and gates,
 sizing at cut time, research first, review notes as backlog rows, and the plan check."""
 import json
+import os
+import shutil
 import subprocess
 import tomllib
 from pathlib import Path
@@ -208,3 +210,33 @@ def test_a_plan_that_breaks_the_slice_rules_is_a_finding(tmp_path):
     assert "plan_invalid" in codes
     (tmp_path / "plan/slice-matrix.json").write_text((CORE / "planning/slice-matrix/examples/toy.json").read_text())
     assert "plan_invalid" not in {f["code"] for f in consistency.check(tmp_path)["findings"]}
+
+
+def test_promote_lesson_shows_the_exact_text_and_pushes_only_with_the_typed_remote_url(tmp_path, monkeypatch):
+    import promote_lesson
+    fakebin = tmp_path / "bin"
+    fakebin.mkdir()
+    (fakebin / "gh").write_text("#!/bin/sh\necho https://github.example/o/kit/pull/1\n")
+    (fakebin / "gh").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fakebin}{os.pathsep}{os.environ['PATH']}")  # never the real gh
+    project = tmp_path / "acme-internal"
+    (project / ".ai").mkdir(parents=True)
+    lesson = {"id": "L1", "title": "Name the seam", "lesson": "Every unit names its seam.", "shape": "rule",
+              "status": "applied", "strikes": ["2026-10-01", "2026-10-02"], "applied_by": "PR 3"}
+    (project / ".ai/lessons.jsonl").write_text(json.dumps(lesson) + "\n")
+    kit = tmp_path / "kit"
+    shutil.copytree(CORE.parent, kit, ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache"))
+    bare = tmp_path / "kit-remote.git"
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
+    git(kit, "init", "-q", "-b", "main")
+    git(kit, "add", "-A")
+    git(kit, "-c", "user.name=t", "-c", "user.email=t@localhost", "commit", "-q", "-m", "kit")
+    git(kit, "remote", "add", "origin", str(bare))
+    shown = promote_lesson.promote(project, kit, "L1")
+    assert shown["pushed"] is False and shown["remote"] == str(bare) and "acme-internal" in shown["text"]
+    for typed in ("", "https://example.invalid/other.git"):
+        with pytest.raises(promote_lesson.PromoteRefused, match="nothing was pushed"):
+            promote_lesson.push(project, kit, "L1", typed)
+    assert subprocess.run(["git", "ls-remote", str(bare)], capture_output=True, text=True).stdout == ""
+    assert promote_lesson.push(project, kit, "L1", str(bare))["pushed"] is True
+    assert "lesson/acme-internal-l1" in subprocess.run(["git", "ls-remote", str(bare)], capture_output=True, text=True).stdout

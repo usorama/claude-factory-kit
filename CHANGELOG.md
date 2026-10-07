@@ -1,64 +1,99 @@
-## 1.2.1 - 2026-10-07
-Fixes from the first real Claude-only run (Claude Code 2.1.290). Each has a test and a sabotage (FIXES.md part 3).
-- Direct landing is plain git: the exact tested commit is pushed with --force-with-lease, no gh, any host. GitHub
-  modes are pr_merge, auto and pr_only. Init names the origin's host and the modes that work there.
-- Budget: every model run, crew included, goes to a spend ledger at once; the daily cap is checked before and after
-  every run; reaching it raises one card and nothing starts. Reports read costs from the ledger, never twice.
-- Crew permissions: answer files via Edit(.factory-crew-*) for every agent (Write(...) never matches; the bare "Edit"
-  deny is gone); permissions travel on the command line because new work folders are untrusted (verified for real).
-- A crew refusal stops at once with one card and is not retried while the card is open; crew turns and budget come
-  from factory.toml. Review-note rows are not triaged at model cost.
-- Python caches are ignored by the build check and restored before a catch-up; init warns about tracked caches.
-- Presets ship caps that fit them and the measured expected cost; init shows the cost per unit and per row.
-- Planning is required before a cut, or skipped explicitly and recorded.
-- A real-model smoke test (skipped unless FACTORY_REAL_SMOKE=1), run here for $0.65.
-
-## 1.2.0 - 2026-10-07
-One tool-neutral core with thin adapters; the Claude Code plugin is one of them.
-- Adapters: Claude Code plugin (this repo is its marketplace; commands /factory-init, /factory-install-clock,
-  /factory-dashboard, /factory-retro, /factory-promote-lesson, /factory-chief; skills; Stop and agent-guard hooks),
-  Codex (skills generated from the same commands, AGENTS.md block, per-role profiles), generic (bin/factory, AGENTS.md).
-- Roles file factory.toml: every role (chief-of-staff, builder, reviewer, researcher, summarizer) pinned with tool,
-  exact model, effort, permissions, a versioned prompt, its output form and the code check. Presets claude-only
-  (default, no Codex), codex-only, claude-codex, generic hold requirements, not model names.
-- Model probe at init: one tiny call per candidate exact model ID; a fixed rule maps requirements to the models that
-  answered. Aliases and tool defaults refused. A pinned model that stops answering stops the unit and asks a person;
-  `factory probe` proposes, `factory roles accept` approves. Receipts record role, model, prompt version, settings.
-- Reviewer independence: a different model when available, else a fresh session with a different review prompt,
-  marked weaker on the dashboard; session reuse is refused.
-- The crew (crew.toml + crew.py): Sorter Sam, Sweeper Sid, the plan coverage auditor, Quill, Inspector Grumble
-  (the reviewer), Lockjaw, Thomasina, the spec conformance auditor, the claim verifier and the Bookie, each started
-  only by code on its trigger, with a JSON form checked by code, project memory and a scorecard on the dashboard.
-- Planning: the slice-matrix skill and its checker ship with the kit; a failing plan is a finding.
-- Sizing at cut time in code: named seam, estimate at most 120 minutes, time box twice the estimate, split after the
-  second refusal or twice the estimate; research first for outside tools; review notes become backlog rows;
-  estimate against actual and ready-queue width on the dashboard.
-- Chief of Staff role and jobs (tick, cut, verify, stop, review, close, retro, report) and its launcher
-  (`factory chief`: the role and its loop with the pinned model).
-- Single-unit stop in code: `tick.py hold` (not runnable at once, its process ended, the killed step voided) and
-  `release` (back to cut only after the re-cut validates); enqueue, hold and release refuse inside a unit work
-  folder; `verify-checkout` for sabotage in a separate checkout; locks stamped with the owner's start time.
-- Rows close only through `tick.py close-row` after the row_landed crew passes.
-
 # Changelog
 
+Newest first. 1.2.2 makes the factory land by pull request on GitHub and closes four risks a first adopter found.
+Each item has a test and a sabotage; `FIXES.md` lists them item by item.
+
+## 1.2.2 - 2026-10-07
+
+- [Quality] On a GitHub origin the factory lands by pull request. A GitHub origin is github.com, or a GitHub
+  Enterprise host that gh is signed in to. Init picks `pr_merge`: one pull request per unit, with the review verdict
+  in its body, which the factory merges itself after its checks. When `gh api` shows the base protected by required
+  reviews or checks, init picks `auto` instead. `direct` is the default only without a GitHub host, and init prints
+  why. No mode pushes to the base of a GitHub origin unless `factory.toml` says `landing = "direct"` explicitly. Init
+  writes the GitHub choice into `factory.toml`, and the dashboard shows the mode in use.
+
+From a first adopter's review of 1.2.1:
+
+- [Quality] Enqueue and the runners accept only a git worktree of the repo under `<repo>-worktrees/`, never the repo
+  itself. A rebuild and a review reset and clean the work folder, so the repo itself would lose uncommitted work.
+- [Quality] `promote-lesson` commits locally and prints the exact text and the remote. Pushing is a separate step a
+  person types with `--confirm-remote <URL>`, and the slash command no longer pre-approves it.
+- Two optional settings, `require_clone_marker` and `forbidden_paths`, stop everything when the folder is not the
+  factory's own.
+- [Quality] The Codex skill generator no longer mangles an install path that contains `/factory-` or spaces.
+
+## 1.2.1 - 2026-10-07
+
+Fixes from the first real Claude-only run (Claude Code 2.1.290). Each has a test and a sabotage (`FIXES.md`, 1.2.1).
+
+- Direct landing is plain git: code pushes the exact tested commit with `--force-with-lease`, with no gh, to any
+  host. The GitHub modes are `pr_merge`, `auto` and `pr_only`. Init names the origin's host and the modes that work.
+- Budget: every model run, crew included, goes to a spend ledger as soon as it ends. Code checks the daily cap before
+  and after every run. Reaching it raises one card and nothing more starts. Reports read costs from the ledger, so no
+  run is counted twice.
+- Crew permissions: every agent writes its answer file through an `Edit(.factory-crew-*)` rule, because a
+  `Write(...)` rule never matches; the bare `Edit` deny is gone. Permissions travel on the command line, since new
+  work folders are untrusted. Both facts were verified with real runs.
+- A crew refusal stops at once with one card and is not retried while the card is open. Crew turns and budget come
+  from `factory.toml`. Review-note rows are no longer triaged at model cost.
+- The build check ignores Python caches, and code restores tracked caches before a catch-up. Init warns about
+  tracked caches.
+- Presets ship caps that fit them, and the measured expected cost. Init shows the cost per unit and per row.
+- Planning is required before a cut, or skipped explicitly and recorded.
+- A real-model smoke test, skipped unless `FACTORY_REAL_SMOKE=1`, ran here for $0.65.
+
+## 1.2.0 - 2026-10-07
+
+One tool-neutral core with thin adapters; the Claude Code plugin is one of them.
+
+- Adapters. The Claude Code plugin: this repo is its marketplace, with six commands (`/factory-init`,
+  `/factory-install-clock`, `/factory-dashboard`, `/factory-retro`, `/factory-promote-lesson`, `/factory-chief`), skills,
+  and two hooks (Stop and an agent guard). Codex: skills generated from the same commands, a block in `AGENTS.md`, and
+  per-role profiles. Generic: `bin/factory` and `AGENTS.md`.
+- The roles file `factory.toml` pins every role (chief-of-staff, builder, reviewer, researcher, summarizer). Each role
+  has a tool, an exact model, an effort, permissions, a versioned prompt, its output form and the code check. The
+  presets claude-only (the default, no Codex), codex-only, claude-codex and generic hold requirements, not model names.
+- A model probe at init makes one tiny call per candidate exact model ID. A fixed rule maps the requirements to the
+  models that answered, and aliases and tool defaults are refused. A pinned model that stops answering stops the
+  unit and asks a person. `factory probe` proposes a new roles file and `factory roles accept` approves it. Receipts
+  record role, model, prompt version and settings.
+- Reviewer independence: a different model when one is available, else a fresh session with a different review
+  prompt, which the dashboard marks weaker. Session reuse is refused.
+- The crew (`crew.toml` and `crew.py`) has ten agents: Sorter Sam, Sweeper Sid, the plan coverage auditor, Quill,
+  Inspector Grumble (the reviewer), Lockjaw, Thomasina, the spec conformance auditor, the claim verifier and the
+  Bookie. Code starts each one only on its trigger. Each answers in a JSON form that code checks, keeps project memory,
+  and has a scorecard on the dashboard.
+- Planning: the slice-matrix skill and its checker ship with the kit, and a failing plan is a finding.
+- Sizing at cut time, in code: a named seam, an estimate of at most 120 minutes, and a time box of twice the estimate.
+  A unit is split after the second refusal or at twice its estimate. Outside tools need research first, review notes
+  become backlog rows, and the dashboard shows estimate against actual and the ready-queue width.
+- The Chief of Staff role, its jobs (tick, cut, verify, stop, review, close, retro, report) and its launcher
+  (`factory chief` starts the role and its loop with the pinned model).
+- Single-unit stop in code. `tick.py hold` makes a unit not runnable at once, ends its process and voids the killed
+  step. `release` returns it to cut only after the re-cut validates. Enqueue, hold and release refuse inside a unit
+  work folder. `verify-checkout` gives a separate checkout for sabotage, and locks carry the owner's start time.
+- Rows close only through `tick.py close-row`, after the crew checks for a landed row pass.
+
 ## 1.1.0 - 2026-10-07
-Fixes from the independent review (REVIEW-fable.md; item by item in FIXES.md).
-- Machinery is never the unit's fault: model errors, non-success subtypes, timeouts, tool denials
-  with no change, fetch and gh failures retry without using an attempt; retries are capped.
-- Usage limits pause builds and reviews (`paused-until`); `--max-turns`, `--max-budget-usd` and a
-  daily budget with one human decision card; lanes default to 2.
-- Toolchain pin by major.minor; patch changes warn; auto-update off; `ticks_skipped` finding.
-- Landing modes direct, auto, pr_only with a `pr_open` state; merge method; gh errors with reasons.
-- Every test run of model-written code is scrubbed: no tokens, temporary HOME, no network where
-  bubblewrap or sandbox-exec works. Builder and reviewer sandboxes have no network.
-- One fetch per tick; patch id with -U0; `brief_check.py`; equal-model refusal; `clock_host`.
-- `lessons.py` (strikes and daily cap by code), escaped defects (`tick.py defect`), unit titles,
-  refusals and cycle time on the page and in the daily report, local dashboard after every tick,
-  `tick.py prune`, `install-clock.sh`, the token file, a fuller allow list.
+
+Fixes from the independent review (`REVIEW-fable.md`; item by item in `FIXES.md`).
+
+- Machinery is never the unit's fault. Model errors, non-success subtypes, timeouts, tool denials with no change,
+  fetch failures and gh failures retry without using an attempt, and retries are capped.
+- Usage limits pause builds and reviews (`paused-until`). There are per-run limits (`--max-turns`,
+  `--max-budget-usd`) and a daily budget with one decision card for a person. Lanes default to 2.
+- The toolchain is pinned by major.minor; patch changes warn; auto-update is off; skipped ticks are a finding.
+- Landing modes direct, auto and pr_only, with a `pr_open` state, a merge method, and gh errors with reasons.
+- Every test run of model-written code is scrubbed: no tokens, a temporary `HOME`, and no network where bubblewrap or
+  sandbox-exec works. Builder and reviewer sandboxes have no network.
+- One fetch per tick, patch ids with `-U0`, `brief_check.py`, the equal-model refusal and `clock_host`.
+- `lessons.py` (strikes and the daily cap by code) and escaped defects (`tick.py defect`). Unit titles, refusals and
+  cycle time on the page and in the daily report, and a local dashboard after every tick. Also `tick.py prune`,
+  `install-clock.sh`, the token file and a fuller allow list.
 
 ## 1.0.0 - 2026-10-07
 First release. Claude Code only: Sonnet builds, Opus reviews in a fresh session.
+
 - Clock with up to 4 parallel lanes, per-entry saves under a lock, one landing at a time.
 - Red check refuses test-file defects; red, build and landing checks tolerate the exact red tests
   of other queued units and of stopped units with an open card.

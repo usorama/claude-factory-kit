@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import GREEN, brief, git, roles_project, unit_files
+from conftest import GREEN, brief, git, roles_project, unit_files, unit_worktree
 
 import brief_check
 import common
@@ -52,7 +52,7 @@ def test_a_builder_stopped_by_a_denied_tool_uses_no_attempt(make_repo, tmp_path)
     fake.chmod(0o755)
     roles_project(root, edit=lambda text: text.replace('command = ["claude", "-p"', f'command = ["{fake}", "-p"', 1))
     build = runners.make_runners(root)["build"]
-    entry = {"unit": ".ai/units/R1/1.json", "worktree": str(root), "attempts": 0}
+    entry = {"unit": ".ai/units/R1/1.json", "worktree": str(unit_worktree(root)), "attempts": 0}
     with pytest.raises(drive.RetryOnce, match="denied a tool"):
         build(entry)
     assert "--max-turns" in common.config(root)["roles"]["builder"]["command"]

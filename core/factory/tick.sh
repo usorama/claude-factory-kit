@@ -4,7 +4,7 @@
 set -u
 REPO="${1:?usage: tick.sh <repo>}"
 # PATH for the clock: claude, gh, python3 and git must be found. Put exports in this optional file.
-# Never put a token in it: tests run as this user (see RULES section 13).
+# Never put a token in it: tests run as this user (see RULES section 15).
 [ -f "$HOME/.factory-env.sh" ] && . "$HOME/.factory-env.sh"
 export DISABLE_AUTOUPDATER=1
 cd "$REPO" || exit 1

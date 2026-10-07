@@ -12,7 +12,8 @@
   factory crew before-cut <row> | handoff <file>   start a crew agent on its trigger (code, never a session)
   factory probe [--preset P]   probe the exact models that answer here; writes factory.toml.proposed
   factory roles accept    approve factory.toml.proposed (a person decides; nothing switches by itself)
-  factory promote-lesson <id> --plugin-repo DIR [--files factory/x.py ...] [--push]
+  factory promote-lesson <id> --plugin-repo DIR [--files factory/x.py ...]   commit locally, print the exact text
+  factory promote-lesson <id> --plugin-repo DIR --push --confirm-remote <URL>   typed by a person
   factory check [repo]    check the kit repo itself: core, adapters, manifests, versions
 All commands act on the project in the current folder (or --project DIR).
 """

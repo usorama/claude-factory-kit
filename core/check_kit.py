@@ -93,6 +93,9 @@ def problems(repo):
         for word in CLI_CALL.findall(text):
             if word not in commands:
                 found.append(f"{path.relative_to(repo)} calls core/cli.py {word}, which is not a command")
+    promote = repo / "adapters/claude-code/commands/factory-promote-lesson.md"
+    if promote.exists() and "promote-lesson" in promote.read_text().split("---")[1]:
+        found.append("factory-promote-lesson.md pre-approves promote-lesson; pushing lesson text needs the person's typed URL")
     tool = repo / "adapters/generic/bin/factory"
     if not tool.is_file() or not os.access(tool, os.X_OK):
         found.append("adapters/generic/bin/factory is missing or not executable")

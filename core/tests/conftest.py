@@ -86,3 +86,12 @@ def plan_matrix(*rows):
                     "acceptance": [{"check": "The tests pass.", "type": "yes_no", "command": "python3 -m pytest -q passes"}],
                     "blocked_by": [], "size": "S", "est_hours": 1, "covers": ["REQ1"], "engines": {}, "outcomes": ["O1"]}
                    for row in rows]})
+
+
+def unit_worktree(root, row="R1", n=1):
+    """Commit everything and make the unit's work folder the way the clock requires: <repo>-worktrees/<row>-U<n>."""
+    git(root, "add", "-A")
+    git(root, "-c", "user.name=t", "-c", "user.email=t@localhost", "commit", "-q", "--allow-empty", "-m", "cut")
+    folder = Path(root).parent / f"{Path(root).name}-worktrees" / f"{row}-U{n}"
+    git(root, "worktree", "add", "-q", "-b", f"unit/{row}/{n}", str(folder))
+    return folder

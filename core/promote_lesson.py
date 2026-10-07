@@ -10,10 +10,13 @@ branch of a checkout of the plugin repo:
   - a check lesson copies the project's changed factory scripts (--files factory/x.py) into
     core/factory/;
   - the kit's patch version goes up (VERSION and .claude-plugin/plugin.json) and CHANGELOG.md gets an entry.
-It commits on the branch. With --push it also pushes and opens a pull request with gh. After the
+It commits on the branch and prints the exact text that would leave this machine, and the remote it would go to.
+Pushing is a separate step a person types: --push --confirm-remote <that exact URL>; it pushes the branch and opens
+a pull request with gh. Lesson text can name a project, so nothing is pushed without that typed URL. After the
 merge, users update the kit (Claude Code: /plugin update; others: git pull) and run
 `factory init --plan` to take the change.
-Usage: promote_lesson.py <lesson id> --plugin-repo DIR [--project DIR] [--files factory/x.py ...] [--push]
+Usage: promote_lesson.py <lesson id> --plugin-repo DIR [--project DIR] [--files factory/x.py ...]
+       promote_lesson.py <lesson id> --plugin-repo DIR --push --confirm-remote <remote URL>
 """
 import argparse
 import json
@@ -33,7 +36,16 @@ def run(cwd, *command):
     return subprocess.run(command, cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
 
 
-def promote(project, repo, ident, files=(), push=False):
+def branch_name(project, ident):
+    return "lesson/" + re.sub(r"[^a-z0-9-]+", "-", f"{project.name}-{ident}".lower())
+
+
+def remote_url(repo):
+    return subprocess.run(["git", "config", "--get", "remote.origin.url"], cwd=repo, capture_output=True,
+                          text=True).stdout.strip()
+
+
+def promote(project, repo, ident, files=()):
     lessons = [json.loads(line) for line in (project / ".ai/lessons.jsonl").read_text().splitlines() if line.strip()]
     lesson = next((item for item in lessons if item.get("id") == ident), None)
     if lesson is None:
@@ -48,7 +60,7 @@ def promote(project, repo, ident, files=(), push=False):
         raise PromoteRefused(f"{repo} has uncommitted changes")
     if lesson["shape"] == "check" and not files:
         raise PromoteRefused("a check lesson needs --files: the project's factory scripts that carry the check")
-    branch = "lesson/" + re.sub(r"[^a-z0-9-]+", "-", f"{project.name}-{ident}".lower())
+    branch = branch_name(project, ident)
     run(repo, "git", "checkout", "-q", "-b", branch)
     shared = core / "templates/lessons.shared.jsonl"
     with shared.open("a") as stream:
@@ -76,16 +88,25 @@ def promote(project, repo, ident, files=(), push=False):
     run(repo, "git", "add", "-A")
     run(repo, "git", "-c", "user.name=factory", "-c", "user.email=factory@localhost", "commit", "-q",
         "-m", f"Promote lesson {ident}: {lesson['title']} (factory {data['version']})")
-    result = {"branch": branch, "version": data["version"], "pushed": False}
-    if push:
-        run(repo, "git", "push", "-q", "-u", "origin", branch)
-        result["pr"] = run(repo, "gh", "pr", "create", "--head", branch, "--title",
-                           f"Promote lesson {ident}: {lesson['title']}", "--body",
-                           f"{lesson['lesson']}\n\nShape: {lesson['shape']}. Strikes: {', '.join(lesson['strikes'])}. "
-                           f"Applied by: {lesson.get('applied_by', '')}.\nRules grow only by replacing: "
-                           "remove one older line before merging a rule.")
-        result["pushed"] = True
-    return result
+    return {"branch": branch, "version": data["version"], "pushed": False, "remote": remote_url(repo) or "(none)",
+            "text": run(repo, "git", "show", "--format=%B", "HEAD"),
+            "next": "Read the text above: it leaves this machine on push. To push, the person types: factory promote-lesson "
+                    f"{ident} --plugin-repo {repo} --push --confirm-remote <the remote URL above>"}
+
+
+def push(project, repo, ident, confirm_remote):
+    """Push an existing lesson branch and open its pull request, only when the person typed the remote URL."""
+    branch, url = branch_name(project, ident), remote_url(repo)
+    if subprocess.run(["git", "rev-parse", "--verify", "-q", branch], cwd=repo, capture_output=True).returncode:
+        raise PromoteRefused(f"no branch {branch} in {repo}; run promote-lesson without --push first and read its text")
+    text = run(repo, "git", "show", "--format=%B", branch)
+    if not url or confirm_remote != url:
+        raise PromoteRefused(f"pushing sends this text to {url or '(no remote)'}; nothing was pushed. Read it, then type "
+                             f"--confirm-remote {url or '<url>'} exactly:\n{text}")
+    run(repo, "git", "push", "-q", "-u", "origin", branch)
+    pr = run(repo, "gh", "pr", "create", "--head", branch, "--title", text.splitlines()[0], "--body",
+             f"{text}\n\nRules grow only by replacing: remove one older line before merging a rule.")
+    return {"branch": branch, "pushed": True, "remote": url, "pr": pr}
 
 
 def main(argv=None):
@@ -94,10 +115,14 @@ def main(argv=None):
     parser.add_argument("--project", type=Path, default=Path.cwd())
     parser.add_argument("--plugin-repo", type=Path, required=True)
     parser.add_argument("--files", nargs="*", default=[])
-    parser.add_argument("--push", action="store_true")
+    parser.add_argument("--push", action="store_true", help="push the branch made earlier; needs --confirm-remote")
+    parser.add_argument("--confirm-remote", default="", help="the exact remote URL, typed by the person")
     args = parser.parse_args(argv)
     try:
-        result = promote(args.project.resolve(), args.plugin_repo.resolve(), args.ident, args.files, args.push)
+        if args.push:
+            result = push(args.project.resolve(), args.plugin_repo.resolve(), args.ident, args.confirm_remote)
+        else:
+            result = promote(args.project.resolve(), args.plugin_repo.resolve(), args.ident, args.files)
     except (PromoteRefused, OSError, subprocess.CalledProcessError) as error:
         print(f"promote refused: {getattr(error, 'stderr', '') or error}", file=sys.stderr)
         return 2

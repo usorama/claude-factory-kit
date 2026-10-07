@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import CORE, GREEN, git, plan_matrix, roles_project, unit_files
+from conftest import CORE, GREEN, git, plan_matrix, roles_project, unit_files, unit_worktree
 
 import build_check
 import common
@@ -129,9 +129,9 @@ def test_a_build_does_not_start_when_the_budget_is_spent(make_repo):
     common.spend(root, "crew:sorter-sam", 1.2)
     build = runners.make_runners(root)["build"]
     (root / ".ai/units/R1").mkdir(parents=True)
-    (root / ".ai/units/R1/1.json").write_text(json.loads(json.dumps(unit_files()[".ai/units/R1/1.json"])))
+    (root / ".ai/units/R1/1.json").write_text(unit_files()[".ai/units/R1/1.json"])
     with pytest.raises(drive.Retry, match="daily budget reached") as stopped:
-        build({"unit": ".ai/units/R1/1.json", "worktree": str(root), "attempts": 0})
+        build({"unit": ".ai/units/R1/1.json", "worktree": str(unit_worktree(root)), "attempts": 0})
     assert stopped.value.counts is False
 
 
@@ -194,3 +194,49 @@ def test_reported_cost_comes_from_the_spend_ledger_so_a_review_is_never_counted_
     common.log(tmp_path, event="crew", agent="inspector-grumble", cost_usd=0.16)  # the same run, as a crew record
     numbers = {n["name"]: n["value"] for n in metrics.factory_numbers(tmp_path)["numbers"]}
     assert numbers["Model cost recorded"] == 0.16 and daily_report.days(tmp_path)[0]["cost_usd"] == 0.16
+
+
+def test_the_clock_only_touches_a_worktree_of_this_repo_under_repo_worktrees(make_repo, tmp_path):
+    root = make_repo({"tests/test_ok.py": GREEN, **unit_files()})
+    folder = unit_worktree(root)
+    assert common.work_folder_problem(root, folder) is None
+    assert "the repo itself" in common.work_folder_problem(root, root)
+    stray = tmp_path / "elsewhere"
+    git(root, "worktree", "add", "-q", "--detach", str(stray))
+    assert "is not under" in common.work_folder_problem(root, stray)
+    other = make_repo({"x": "x"}, "other")
+    foreign = root.parent / f"{root.name}-worktrees" / "foreign"
+    git(other, "worktree", "add", "-q", "--detach", str(foreign))
+    assert "another repository" in common.work_folder_problem(root, foreign)
+    (root / "plan").mkdir(exist_ok=True)
+    (root / "plan/backlog.md").write_text("| ID | Status |\n|---|---|\n| R1 | building |\n")
+    (root / "notes.txt").write_text("uncommitted work a person cares about")
+    with pytest.raises(tick.Refused, match="the repo itself"):
+        tick.enqueue(root, ".ai/units/R1/1.json", root)
+    roles_project(root)
+    with pytest.raises(RuntimeError, match="refusing to touch"):
+        runners.make_runners(root)["build"]({"unit": ".ai/units/R1/1.json", "worktree": str(root), "attempts": 1,
+                                             "built_from": "HEAD~1"})
+    assert (root / "notes.txt").read_text() == "uncommitted work a person cares about"
+
+
+@pytest.mark.parametrize("setting, make, reason", [
+    ('require_clone_marker = true', None, "require_clone_marker is set"),
+    ('forbidden_paths = ["data/live.db"]', "data/live.db", "forbidden path data/live.db exists"),
+])
+def test_optional_folder_guards_stop_everything(clock_repo, setting, make, reason):
+    text = (clock_repo / "factory.toml").read_text()
+    (clock_repo / "factory.toml").write_text(setting + "\n" + text)
+    if make:
+        (clock_repo / make).parent.mkdir(parents=True, exist_ok=True)
+        (clock_repo / make).write_text("real records")
+    assert reason in tick.tick_once(clock_repo, {})["skipped"]
+    with pytest.raises(crew.CrewRefused, match=reason.split(" ")[0]):
+        crew.run_agent(clock_repo, "sweeper-sid", "before_cut", "R1", {"row": "R1"}, run=fake_run())
+    with pytest.raises(ValueError, match=reason.split(" ")[0]):
+        runners.make_runners(clock_repo)
+    if make:
+        (clock_repo / make).unlink()
+    else:
+        (clock_repo / ".factory-clone").write_text("")
+    assert common.folder_problem(common.config(clock_repo), clock_repo) is None

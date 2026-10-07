@@ -19,7 +19,7 @@ import tomllib
 from pathlib import Path
 
 from brief_check import BriefRefused, check_brief
-from common import BudgetReached, budget_gate, config, log, now, read_jsonl, spend, var
+from common import BudgetReached, budget_gate, config, folder_problem, log, now, read_jsonl, spend, var
 from drive import ModelGone, RetryOnce, UsageLimit
 from modelrun import NO_NETWORK, claude_env, claude_usage, classify, fill, role_command, run_tracked
 
@@ -149,6 +149,9 @@ def run_agent(root, name, event, subject, context, workdir=None, run=subprocess.
     """Run one crew agent with the model pinned for its role; return (data, verdict). Never falls back.
     Limits come from factory.toml (crew_max_turns, max_budget_crew_usd); the daily budget is checked first."""
     root, crew, cfg = Path(root), load(), config(root)
+    problem = folder_problem(cfg, root)
+    if problem:
+        raise CrewRefused(problem)
     open_card = var(root) / "asks" / f"crew-{name}-{subject}.md"
     if open_card.exists():
         raise CrewRefused(f"{name} stopped on {subject} earlier; fix the cause and close the card {open_card.name} first")

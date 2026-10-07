@@ -21,7 +21,7 @@ Version: `VERSION`. Every file: `MANIFEST.md`. Rules: `RULES.md`. Why: `PRINCIPL
 ## The loop
 
 ```
- YOU: only money, accounts, production, real people, a model change, product choices  (DEC- cards)
+ YOU: only money, accounts, production, real people, a model change, product choices  (decision cards, `DEC-<id>`)
   ^                                                              dashboard (artifact or local page)
  CHIEF OF STAFF (one continuous session: `factory chief`)              ^ metrics + staleness gate
   | plan (slice-matrix) -> before-cut (Sweeper Sid, plan coverage) -> cut a sized unit -> enqueue
@@ -35,7 +35,8 @@ Version: `VERSION`. Every file: `MANIFEST.md`. Rules: `RULES.md`. Why: `PRINCIPL
 
 ## What you need
 Python 3.12, git, the GitHub CLI (`gh`, signed in), pytest, and at least one agent tool: Claude Code (2.1 or newer) or
-Codex CLI. Linux and WSL2: `sudo apt install bubblewrap socat` for no-network test runs. Windows: use WSL2 Ubuntu and
+Codex CLI. On Linux and on the Windows Subsystem for Linux (WSL), install `bubblewrap` and `socat` for no-network
+test runs (`sudo apt install bubblewrap socat`). Windows: use Ubuntu under WSL version 2 (WSL2) and
 keep repos under `~/`, not `/mnt/c`.
 
 ## Install
@@ -51,8 +52,13 @@ candidate model), shows the roles it chose and why, and asks before overwriting 
 **Codex:** `git clone <kit>`, `bash adapters/codex/install.sh`, then in your repo
 `python3 <kit>/core/cli.py init --apply --preset codex-only --adapter codex` (or `claude-codex`), then `factory clock`.
 
-**Any harness or by hand:** put `<kit>/adapters/generic/bin` on PATH, then `factory init --apply --preset generic
+**Any harness or by hand:** put `<kit>/adapters/generic/bin` on your `PATH`, then `factory init --apply --preset generic
 --adapter generic`, fill the commands and models in `factory.toml`, then `factory clock`.
+
+Landing: on a GitHub origin the factory opens a pull request per unit (review verdict in the body) and merges
+it itself (`pr_merge`), or lets GitHub merge it when main is protected (`auto`). It never pushes to main on GitHub
+unless `landing = "direct"` is written explicitly. Without a GitHub host it pushes the tested commit (`direct`).
+Init prints which mode it chose and why; the dashboard shows the mode in use.
 
 Presets (`core/factory/presets/`) hold role requirements, not model names. Example: on a machine with only Sonnet 5.5,
 Sonnet 5, Sonnet 4.6 and Haiku 5, claude-only maps the chief of staff and builder to `claude-sonnet-5-5`, the reviewer
@@ -68,48 +74,51 @@ It skips unless the variable is set and both models answer.
 python3 core/sample/dry_run.py /tmp/factory-dry-run --preset claude-only     # also codex-only, claude-codex, generic
 python3 -m pytest -q                                                          # the kit's own tests
 ```
-The dry run installs with `factory init` (the probe runs against fake tools), runs the before-cut crew, cuts two
-units (the second without a brief, so Quill writes it), ticks until both land, closes the row through code, runs the
-retro and builds the dashboard. It ends with `DRY RUN PASSED`.
+The dry run installs with `factory init`, and the model probe runs against fake tools. It runs the before-cut crew
+and cuts two units; the second has no brief, so Quill writes it. It ticks until both land, closes the row through
+code, runs the retro and builds the dashboard. It ends with `DRY RUN PASSED`.
 
 ## Daily use
-| When | What | Command |
-|---|---|---|
-| Always | The clock runs by itself | `factory clock` installed it (cron, launchd or Task Scheduler) |
-| Always | The chief of staff loop | `factory chief` in tmux (Claude Code: role + `/loop`; Codex: role + first instruction) |
-| Before planning or re-planning | Plan from outcomes | skill `slice-matrix`, then `python3 factory/planning/validate_matrix.py plan/slice-matrix.json` |
-| Before cutting a row | Crew checks | `factory crew before-cut <row>` |
-| Cutting | Size and queue a unit | skill `cut-a-unit`; `python3 factory/tick.py enqueue ...` from the live checkout |
-| Stop one unit | Hold, re-cut, release | `python3 factory/tick.py hold <unit> --reason ...`, then `release <unit> --note ...` |
-| A row's units all landed | Close it by code | `python3 factory/tick.py close-row <row>` |
-| Any time | Dashboard | `factory dashboard` (Claude Code: `/factory-dashboard` publishes it as an artifact) |
-| End of day | Retro | `factory retro` (`/factory-retro`); share a proven lesson with `factory promote-lesson` |
+
+- **Always: the clock runs by itself.** `factory clock` installed it (cron, launchd or Task Scheduler).
+- **Always: the chief of staff runs its loop.** `factory chief` in tmux (Claude Code: role + `/loop`; Codex: role + first instruction).
+- **Before planning or re-planning: plan from outcomes.** Skill `slice-matrix`, then `python3 factory/planning/validate_matrix.py plan/slice-matrix.json`.
+- **Before cutting a row: crew checks.** `factory crew before-cut <row>`.
+- **Cutting: size and queue a unit.** Skill `cut-a-unit`; `python3 factory/tick.py enqueue ...` from the live checkout.
+- **Stop one unit: hold, re-cut, release.** `python3 factory/tick.py hold <unit> --reason ...`, then `release <unit> --note ...`.
+- **A row's units all landed: close it by code.** `python3 factory/tick.py close-row <row>`.
+- **Any time: dashboard.** `factory dashboard` (Claude Code: `/factory-dashboard` publishes it as an artifact).
+- **End of day: retro.** `factory retro` (`/factory-retro`); share a proven lesson with `factory promote-lesson`.
 
 ## Self-improvement, two levels
 1. **Local:** lessons (`.ai/lessons.jsonl`), rules (`.ai/factory-rules.md`), the defect library and every prompt
    (`.ai/prompts/`) live in your repo and work at once. Plugin updates never overwrite them.
-2. **Shared:** `factory promote-lesson <id> --plugin-repo <checkout> [--files factory/x.py] [--push]` turns a proven lesson
-   into a branch on the kit repo (shared lessons file, rule line or script change, version bump, CHANGELOG entry) and a
-   pull request. After it merges, users run `/plugin update` (or `git pull`) and `factory init --plan` to take it.
+2. **Shared:** `factory promote-lesson <id> --plugin-repo <checkout> [--files factory/x.py]` turns a proven lesson
+   into a local branch on a kit checkout (shared lessons file, rule line or script change, version bump, CHANGELOG
+   entry) and prints the exact text and the remote it would go to. Lesson text can name your project, so pushing is a
+   separate step a person types: `--push --confirm-remote <that exact URL>`; it opens a pull request. After it merges,
+   users run `/plugin update` (or `git pull`) and `factory init --plan` to take it.
 
 ## How to stop it
 Pause the clock (`crontab -e`, or unload the launchd job). Stop one unit: `tick.py hold`. Emergency: the `stop` job in
 `.ai/prompts/chief-of-staff-jobs.v1.md`.
 
 ## Troubleshooting
-| Symptom | Cause and fix |
-|---|---|
-| `factory init` refuses: "role X needs codex ..." | That tool is missing or no wanted model answered. Choose another preset. |
-| Ticks skipped: "must be an exact model ID" | The roles file has an alias or a placeholder. `factory probe`, then `factory roles accept`. |
-| Unit errored, DEC-roles card | A pinned model stopped answering. Approve a re-probe; nothing switches by itself. |
-| Ticks skipped: "builder and reviewer are the same model" | Set a different reviewer model, or with one model `same_tool_review = "fresh-session"`. |
-| enqueue refused: "run before-cut first" / "plan changed" | `factory crew before-cut <row>` again. |
-| `unit refused: ... too big for one session` | Cut it smaller (at most 3 code files, 5 tests, 120 minutes). |
-| Unit `needs_split`: "over twice its estimate" | The unit was too big. Split it; the dashboard shows estimate against actual. |
-| Red check `network_isolation: none` | bubblewrap cannot start here; tests can reach the network (RULES 14). |
-| `retry once: gh pr merge failed: ... policy` | main is protected: set `landing = "auto"` or `"pr_only"` in factory.toml. |
-| `gh pr create failed: none of the git remotes ... known GitHub host` | Use `landing = "direct"` (plain git; works with GitLab, GitHub Enterprise without gh, a bare repo). `factory init` lists the modes that work. |
-| `claude -p` warns "Ignoring ... permissions.allow entries ... not trusted" | Expected in a new work folder: the factory passes every permission on the command line, so the warning changes nothing. |
-| DEC-budget card | The daily budget is spent (builds, reviews and crew all count). Raise `daily_budget_usd` or wait for tomorrow. |
-| `crew-<agent>-<row>` card | A crew agent was refused once (for example it could not write its answer file). Fix the cause, close the card, run the command again. |
-| `before-cut` refused: "no planning matrix" | Plan the row with the slice-matrix skill, or set `planning = "skip"` in factory.toml (recorded in the daily report). |
+
+Each item is a symptom, then its cause and fix.
+
+- **`factory init` refuses: "role X needs codex ...".** That tool is missing or no wanted model answered. Choose another preset.
+- **Ticks skipped: "must be an exact model ID".** The roles file has an alias or a placeholder. `factory probe`, then `factory roles accept`.
+- **Unit errored, `DEC-roles` card.** A pinned model stopped answering. Approve a re-probe; nothing switches by itself.
+- **Ticks skipped: "builder and reviewer are the same model".** Set a different reviewer model, or with one model `same_tool_review = "fresh-session"`.
+- **enqueue refused: "run before-cut first" / "plan changed".** `factory crew before-cut <row>` again.
+- **`unit refused: ... too big for one session`.** Cut it smaller (at most 3 code files, 5 tests, 120 minutes).
+- **Unit `needs_split`: "over twice its estimate".** The unit was too big. Split it; the dashboard shows estimate against actual.
+- **Red check `network_isolation: none`.** Bubblewrap cannot start here; tests can reach the network (`RULES.md` section 15).
+- **`retry once: gh pr merge failed: ... policy`.** Main is protected: set `landing = "auto"` or `"pr_only"` in factory.toml.
+- **`gh pr create failed: none of the git remotes ... known GitHub host`.** The origin is not a GitHub host gh can reach. Leave `landing` unset (direct follows the origin) or sign gh in to your GitHub Enterprise host.
+- **`the origin is GitHub: the factory never pushes to main unless factory.toml says landing = "direct"`.** On GitHub the factory lands through pull requests (`pr_merge` or `auto`). Write `landing = "direct"` only if your team really wants direct pushes.
+- **`claude -p` warns "Ignoring ... permissions.allow entries ... not trusted".** Expected in a new work folder: the factory passes every permission on the command line, so the warning changes nothing.
+- **`DEC-budget` card.** The daily budget is spent (builds, reviews and crew all count). Raise `daily_budget_usd` or wait for tomorrow.
+- **`crew-<agent>-<row>` card.** A crew agent was refused once (for example it could not write its answer file). Fix the cause, close the card, run the command again.
+- **`before-cut` refused: "no planning matrix".** Plan the row with the slice-matrix skill, or set `planning = "skip"` in factory.toml (recorded in the daily report).

@@ -20,10 +20,11 @@ from pathlib import Path
 import crew
 from build_check import build_check
 from common import (BudgetReached, budget_gate, config, config_problem, git, label, read_queue, review_independence,
-                    spend, var)
+                    spend, var, work_folder_problem)
 from drive import Retry, RetryOnce
 from modelrun import FORM_NAME, NO_NETWORK, claude_env, claude_usage, classify, fill, role_command, run_tracked
-from land import GhFailed, MainMoved, catch_up, land, patch_id, pr_state, restore_caches
+from land import (DirectToGitHubRefused, GhFailed, MainMoved, catch_up, effective_landing, land, patch_id, pr_state,
+                  restore_caches)
 from red_check import red_check, tolerated_tests
 from review import KINDS, file_notes, parse, summary
 
@@ -37,6 +38,9 @@ def make_runners(root, gh="gh"):
 
     def context(entry):
         worktree = Path(entry["worktree"])
+        problem = work_folder_problem(root, worktree)
+        if problem:  # checked before any reset, clean or checkout touches the folder
+            raise RuntimeError(f"refusing to touch {worktree}: {problem}")
         unit = json.loads((worktree / entry["unit"]).read_text())
         return worktree, unit, label(entry["unit"])
 
@@ -209,15 +213,16 @@ def make_runners(root, gh="gh"):
         tolerated = tolerated_tests(root, entry)
         try:  # cheap integrity checks; the full suite runs on the merged result
             build_check(entry["unit"], worktree, check_base, tolerated, guard=False, suite=False)
+            mode, _ = effective_landing(root, cfg)
             entry["pr"], merged = land(worktree, unit, base, tolerated, entry.get("review_text", ""), gh,
-                                       entry.get("pr"), cfg["landing"], cfg["merge_method"])
+                                       entry.get("pr"), mode, cfg["merge_method"], cfg["landing"] == "direct")
         except MainMoved as moved:
             raise Retry(str(moved)) from moved
-        except GhFailed as error:
+        except (GhFailed, DirectToGitHubRefused) as error:
             raise RetryOnce(str(error)) from error
         except ValueError as error:
             return False, str(error), {}
-        landed = {"landed_commit": entry["pr"]} if cfg["landing"] == "direct" else {"pr": entry["pr"]}
+        landed = {"landed_commit": entry["pr"]} if mode == "direct" else {"pr": entry["pr"]}
         return True, entry["pr"], {**landed, **({} if merged else {"to_state": "pr_open"})}
 
     def watch(entry):

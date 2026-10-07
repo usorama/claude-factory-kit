@@ -7,7 +7,8 @@ Put `adapters/generic/bin` on PATH, then in a project:
     factory crew before-cut <row>   # before cutting a row
     factory dashboard      # build the page; publish it as an artifact if your harness can, else open the file
     factory retro          # end of day
-    factory promote-lesson <id> --plugin-repo <checkout> [--push]
+    factory promote-lesson <id> --plugin-repo <checkout>                      # commits locally, prints the exact text
+    factory promote-lesson <id> --plugin-repo <checkout> --push --confirm-remote <remote URL>   # a person types this
 
 A role command in factory.toml gets its prompt on stdin, runs in the unit's work folder, and must pass {model}.
 The reviewer writes its JSON form to $FACTORY_REVIEW_FORM; a crew agent to $FACTORY_CREW_OUTPUT. Declare

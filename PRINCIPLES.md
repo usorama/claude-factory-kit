@@ -1,6 +1,6 @@
 # Principles
 
-Each principle is here because breaking it cost real time. The exact rules: RULES.md.
+Each principle is here because breaking it cost real time. The exact rules are in `RULES.md`.
 
 1. **Outcome first.** Every report, card and page starts with what happened and what it means. Plain words, short
    sentences, full file paths. The reader may read English as a second language.

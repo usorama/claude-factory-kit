@@ -23,7 +23,7 @@ from pathlib import Path
 
 import asks
 import drive
-from common import (ACTIVE, STOPPED, BudgetReached, Lock, budget_gate, config, config_problem, git, label, log, now,
+from common import (ACTIVE, STOPPED, BudgetReached, work_folder_problem, Lock, budget_gate, config, config_problem, git, label, log, now,
                     paused_until,
                     queue_lock, read_queue, spent_today,
                     unit_row, var, write_queue)
@@ -81,6 +81,9 @@ def enqueue(root, unit_path, worktree):
     if refusal:
         raise Refused(refusal)
     row, n = unit_row(unit_path)
+    problem = work_folder_problem(root, worktree)
+    if problem:
+        raise Refused(problem)
     try:
         check_unit(Path(worktree) / unit_path)
     except UnitRefused as error:

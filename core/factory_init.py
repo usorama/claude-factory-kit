@@ -94,6 +94,13 @@ def apply(project, overwrite=(), preset="claude-only", adapter="claude-code", pr
         import probe
         report = probe_report or probe.probe()
         text, rows = probe.roles_file(probe.load_preset(preset), report)
+        sys.path.insert(0, str(CORE / "factory"))
+        import land
+        chosen = land.landing_plan(project)
+        if chosen["github"]:  # written explicitly, so the mode in use is visible in factory.toml
+            text = f'# Landing chosen by factory init: {chosen["why"]}\nlanding = "{chosen["landing"]}"\n' + text
+        else:  # not written: no explicit direct, so a later GitHub origin is never pushed to directly
+            text = f'# Landing: {chosen["why"]}. Not written here, so it follows the origin.\n' + text
         (project / "var/factory").mkdir(parents=True, exist_ok=True)
         (project / "var/factory/probe.json").write_text(json.dumps(report, indent=1))
         probe_cost = 0.0
@@ -149,10 +156,12 @@ def apply(project, overwrite=(), preset="claude-only", adapter="claude-code", pr
         hook.chmod(0o755)
         done.append("installed the pre-commit hook")
     sys.path.insert(0, str(project / "factory"))
+    import common
     import land
     host, modes = land.host_modes(project)
-    done.append(f"origin host: {host}; landing modes that work here: {', '.join(modes)}"
-                + ("" if len(modes) > 1 else " (pull request modes need gh signed in to a GitHub host)"))
+    mode, source = land.effective_landing(project, common.config(project))
+    done.append(f"origin host: {host}; landing modes that work here: {', '.join(modes)}")
+    done.append(f"landing in use: {mode} ({source}); {land.landing_plan(project)['why']}")
     caches = [p for p in subprocess.run(["git", "ls-files"], cwd=project, capture_output=True, text=True).stdout.split()
               if "__pycache__" in Path(p).parts or p.endswith((".pyc", ".pyo"))]
     if caches:

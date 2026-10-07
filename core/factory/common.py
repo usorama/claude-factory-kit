@@ -24,11 +24,12 @@ DEFAULTS = {
     "base": "main", "lanes": 2,
     "build_timeout_minutes": 40, "review_timeout_minutes": 30,
     "clock_stale_minutes": 15, "queue_floor": 2,
-    "landing": "direct", "merge_method": "merge",
+    "landing": "", "merge_method": "merge",
     "max_turns_build": 60, "max_turns_review": 40,
     "max_budget_build_usd": 3.0, "max_budget_review_usd": 3.0, "daily_budget_usd": 40.0,
     "max_retries": 3, "usage_pause_minutes": 60, "clock_host": "", "same_tool_review": "", "retro_time": "21:00",
     "crew_max_turns": 20, "max_budget_crew_usd": 0.75, "planning": "required",
+    "require_clone_marker": False, "forbidden_paths": [],
 }
 OUTPUTS = ("claude-json", "codex-jsonl", "text")
 ROLE_FORMS = {"chief-of-staff": ("position", "consistency"), "builder": ("diff", "build_check"),
@@ -118,12 +119,28 @@ def roles_problem(cfg, root=None):
     return None
 
 
+CLONE_MARKER = ".factory-clone"
+
+
+def folder_problem(cfg, root):
+    """Optional guards on the folder the factory runs in (both off by default):
+    require_clone_marker = true: run only where a .factory-clone file exists, so the factory never runs in the folder
+    a person works in; forbidden_paths = [...]: files that must not exist here (a real database, a credentials file)."""
+    root = Path(root)
+    if cfg.get("require_clone_marker") and not (root / CLONE_MARKER).is_file():
+        return f"require_clone_marker is set and {root / CLONE_MARKER} is missing: this is not the factory's clone"
+    for name in cfg.get("forbidden_paths") or []:
+        if (root / name).exists():
+            return f"forbidden path {name} exists in {root}: nothing runs here"
+    return None
+
+
 def config_problem(cfg, root=None):
     """A setting the factory refuses to run with, or None."""
-    problem = roles_problem(cfg, root)
+    problem = (folder_problem(cfg, root) if root is not None else None) or roles_problem(cfg, root)
     if problem:
         return problem
-    if cfg["landing"] not in LANDINGS:
+    if cfg["landing"] and cfg["landing"] not in LANDINGS:
         return f"landing must be one of {', '.join(LANDINGS)}"
     if cfg["merge_method"] not in MERGE_METHODS:
         return f"merge_method must be one of {', '.join(MERGE_METHODS)}"
@@ -295,6 +312,25 @@ def write_queue(root, queue):
     tmp = path.with_name(f"queue.json.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(queue, indent=1))
     os.replace(tmp, path)
+
+
+def work_folder_problem(root, worktree):
+    """Why a folder may not be a unit work folder, or None. The clock resets and cleans work folders
+    (git reset --hard, git clean -fdq, git checkout -- .), so it accepts only a git worktree of this repo
+    under <repo>-worktrees/, and never the repo itself, where a person's uncommitted work lives."""
+    root, folder = Path(root).resolve(), Path(worktree).resolve()
+    if folder == root:
+        return "the work folder is the repo itself; the clock would wipe its uncommitted work"
+    home = root.parent / f"{root.name}-worktrees"
+    if home not in folder.parents:
+        return f"{folder} is not under {home}; make work folders with tick.py worktree"
+    ask = lambda where, *args: git(where, "rev-parse", *args, check=False).stdout.strip()
+    if ask(folder, "--show-toplevel") != str(folder):
+        return f"{folder} is not the top of a git worktree"
+    if Path(ask(folder, "--path-format=absolute", "--git-common-dir")).resolve() != \
+            Path(ask(root, "--path-format=absolute", "--git-common-dir")).resolve():
+        return f"{folder} is a worktree of another repository"
+    return None
 
 
 def key(entry):

@@ -94,6 +94,16 @@ def test_the_codex_skills_are_generated_from_the_claude_commands_and_call_the_co
     assert f"{REPO}/core/cli.py" in text and "--adapter codex" in text and "CLAUDE_PLUGIN_ROOT" not in text
 
 
+def test_the_codex_skills_keep_any_install_path_intact(tmp_path):
+    kit = tmp_path / "my code-projects" / "factory-kit"  # spaces, dashes and a "/factory-" inside the path
+    shutil.copytree(REPO, kit, ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache"))
+    subprocess.run(["bash", str(kit / "adapters/codex/install.sh")], env=dict(os.environ, CODEX_HOME=str(tmp_path / "codex")),
+                   check=True, capture_output=True)
+    text = (tmp_path / "codex/skills/factory-init/SKILL.md").read_text()
+    assert f'python3 "{kit}/core/cli.py"' in text and "projectsthe skill" not in text
+    assert "the skill factory-install-clock" in (tmp_path / "codex/skills/factory-init/SKILL.md").read_text()
+
+
 def test_the_generic_cli_drives_the_core(tmp_path):
     root = project(tmp_path)
     tool = REPO / "adapters/generic/bin/factory"

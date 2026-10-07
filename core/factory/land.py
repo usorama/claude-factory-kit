@@ -113,21 +113,83 @@ def push_direct(worktree, commit, base, fetched):
     git(worktree, "fetch", "-q", "origin", base, check=False)
 
 
-def host_modes(root):
-    """(host, landing modes that work): plain git works everywhere; pull request modes need gh signed in
-    for the origin's host (github.com or a GitHub Enterprise host)."""
-    url = git(root, "remote", "get-url", "origin", check=False).stdout.strip()
+def origin(root):
+    """(origin URL as configured, host). host is "local" for a path or file URL, "" when there is no origin.
+    The configured URL is read before any insteadOf rewrite: it names the host the team uses."""
+    url = git(root, "config", "--get", "remote.origin.url", check=False).stdout.strip()
     if not url:
-        return "none (no origin yet)", ["direct"]
+        return "", ""
     match = re.match(r"^(?:https?://(?:[^@/]+@)?|ssh://(?:[^@/]+@)?|[^@/]+@)([^/:]+)", url)
-    host = match.group(1) if match and not url.startswith(("/", ".", "file:")) else "local"
-    if host == "local":
-        return host, ["direct"]
-    signed_in = subprocess.run(["gh", "auth", "status", "--hostname", host], capture_output=True, text=True,
-                               check=False) if shutil.which("gh") else None
-    if signed_in is not None and signed_in.returncode == 0:
-        return host, list(LANDINGS)
-    return host, ["direct"]
+    return url, (match.group(1) if match and not url.startswith(("/", ".", "file:")) else "local")
+
+
+def is_github(host, gh="gh"):
+    """github.com, or a GitHub Enterprise host gh is signed in to."""
+    if host in ("", "local"):
+        return False
+    if host == "github.com":
+        return True
+    return bool(shutil.which(gh)) and subprocess.run([gh, "auth", "status", "--hostname", host], capture_output=True,
+                                                     text=True, check=False).returncode == 0
+
+
+def protection(url, base, gh="gh"):
+    """'protected', 'open' or 'unknown', read through gh api (needs read access to the branch settings)."""
+    match = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?/?$", url)
+    if not match or not shutil.which(gh):
+        return "unknown"
+    seen = subprocess.run([gh, "api", f"repos/{match.group(1)}/{match.group(2)}/branches/{base}/protection"],
+                          capture_output=True, text=True, check=False)
+    if seen.returncode == 0:
+        try:
+            rules = json.loads(seen.stdout)
+        except ValueError:
+            return "unknown"
+        return "protected" if rules.get("required_pull_request_reviews") or rules.get("required_status_checks") else "open"
+    return "open" if "Branch not protected" in seen.stdout + seen.stderr else "unknown"
+
+
+def landing_plan(root, base="main", gh="gh"):
+    """The landing mode init picks, and why. On GitHub the factory never pushes to the base itself: it opens a
+    pull request per unit and merges it (pr_merge), or lets GitHub merge it when the base is protected (auto).
+    Plain git (direct) is the default only when the origin is not a GitHub host."""
+    url, host = origin(root)
+    if not host:
+        return {"host": "none (no origin yet)", "github": False, "landing": "direct",
+                "why": "no origin yet: direct (plain git); run factory init --plan again after adding a GitHub origin"}
+    if not is_github(host, gh):
+        return {"host": host, "github": False, "landing": "direct",
+                "why": f"origin {host} is not a GitHub host gh can reach: direct (plain git push of the tested commit)"}
+    state = protection(url, base, gh)
+    if state == "protected":
+        return {"host": host, "github": True, "landing": "auto",
+                "why": f"origin is GitHub ({host}) and {base} is protected: auto (a PR per unit; GitHub merges it when "
+                       "its required reviews and checks pass; the repo must allow auto-merge)"}
+    unknown = "" if state == "open" else f" (the protection of {base} could not be read; set landing = \"auto\" if it needs reviews)"
+    return {"host": host, "github": True, "landing": "pr_merge",
+            "why": f"origin is GitHub ({host}): pr_merge (a PR per unit with the review verdict, merged by the factory "
+                   f"after its checks; never a direct push to {base}){unknown}"}
+
+
+def host_modes(root):
+    """(host, landing modes that work): plain git works everywhere; pull request modes need gh for a GitHub host."""
+    plan = landing_plan(root)
+    return plan["host"], list(LANDINGS) if plan["github"] else ["direct"]
+
+
+def effective_landing(root, cfg):
+    """The mode in use: the one factory.toml names, else the host's default (pr_merge on GitHub, direct elsewhere).
+    Never asks gh api at landing time."""
+    if cfg.get("landing"):
+        return cfg["landing"], "set in factory.toml"
+    _, host = origin(root)
+    if is_github(host):
+        return "pr_merge", f"default for a GitHub origin ({host})"
+    return "direct", f"default for a non-GitHub origin ({host or 'none'})"
+
+
+class DirectToGitHubRefused(RuntimeError):
+    """direct would push to the base of a GitHub origin, but factory.toml does not say landing = "direct"."""
 
 
 def gh_call(gh, worktree, *args):
@@ -139,9 +201,13 @@ def gh_call(gh, worktree, *args):
         raise GhFailed(f"gh {' '.join(args[:2])} failed: {detail.strip()[-400:]}") from error
 
 
-def land(worktree, unit, base, tolerated, review_text, gh="gh", pr=None, mode="direct", method="merge"):
+def land(worktree, unit, base, tolerated, review_text, gh="gh", pr=None, mode="direct", method="merge",
+         direct_explicit=False):
     """Return (PR address or the landed commit, merged now?). The caller already caught up and checked the unit.
     direct: plain git, no forge (GitHub, GitHub Enterprise, GitLab, a bare repo). pr_merge, auto, pr_only: GitHub."""
+    if mode == "direct" and not direct_explicit and is_github(origin(worktree)[1], gh):
+        raise DirectToGitHubRefused(f"the origin is GitHub: the factory never pushes to {base} unless factory.toml says "
+                                    'landing = "direct"; use pr_merge (the default) or auto')
     fetched = git(worktree, "rev-parse", f"origin/{base}").stdout.strip()
     title = unit.get("title") or unit["paragraph"].split(".")[0]
     tested = merged_suite(worktree, fetched, tolerated, method, f"{title}\n\nFactory review form:\n{review_text}")
@@ -152,8 +218,9 @@ def land(worktree, unit, base, tolerated, review_text, gh="gh", pr=None, mode="d
     head = git(worktree, "rev-parse", "HEAD").stdout.strip()
     git(worktree, "push", "-q", "-u", "--force-with-lease", "origin", branch)
     if not pr:
-        body = "\n".join([unit["paragraph"], "", "Tests:", *unit["tests"], "", "Files:", *unit["files"],
-                          "", f"Estimate: {unit.get('estimate_minutes', '?')} minutes"])
+        body = "\n".join([unit["paragraph"], "", "Factory review verdict:", review_text or "(none)", "",
+                          "Tests:", *unit["tests"], "", "Files:", *unit["files"], "",
+                          f"Estimate: {unit.get('estimate_minutes', '?')} minutes"])
         pr = gh_call(gh, worktree, "pr", "create", "--base", base, "--head", branch, "--title", title, "--body", body)
     number = pr_number(pr)
     gh_call(gh, worktree, "pr", "comment", number, "--body", "Factory review form:\n" + review_text)

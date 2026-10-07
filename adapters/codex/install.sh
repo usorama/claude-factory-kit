@@ -10,11 +10,14 @@ import re, sys
 from pathlib import Path
 kit, dest = Path(sys.argv[1]), Path(sys.argv[2])
 for command in sorted((kit / "adapters/claude-code/commands").glob("*.md")):
-    text = command.read_text().replace("${CLAUDE_PLUGIN_ROOT}", str(kit))
+    text = command.read_text()
     front, body = text.split("---", 2)[1], text.split("---", 2)[2]
     description = re.search(r"^description: (.*)$", front, re.M).group(1)
-    body = body.replace("$ARGUMENTS", "the arguments the person gave").replace("/factory-", "the skill factory-")
+    body = body.replace("$ARGUMENTS", "the arguments the person gave")
+    # Only a slash command (/factory-x at a word start) becomes a skill name; never a path that contains "/factory-".
+    body = re.sub(r"(?<![\w./~-])/(factory-[a-z-]+)", r"the skill \1", body)
     body = body.replace("--adapter claude-code", "--adapter codex").replace("If you have the Artifact tool", "If your harness can publish an artifact")
+    body = body.replace("${CLAUDE_PLUGIN_ROOT}", str(kit))  # last: the kit path is inserted untouched (spaces, dashes)
     target = dest / command.stem / "SKILL.md"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(f"---\nname: {command.stem}\ndescription: {description}\n---\n"

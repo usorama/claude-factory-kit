@@ -1,0 +1,6 @@
+{
+ "_captured": "gh 2.45.0, gh api repos/<owner>/<repo>/branches/main/protection on an unprotected public repo, 2026-10-07",
+ "not_protected": {"exit": 1, "stdout": "{\"message\":\"Branch not protected\",\"documentation_url\":\"https://docs.github.com/rest/branches/branch-protection#get-branch-protection\",\"status\":\"404\"}", "stderr": "gh: Branch not protected (HTTP 404)"},
+ "repo_settings": {"exit": 0, "stdout": "{\"allow_auto_merge\":false,\"allow_merge_commit\":true,\"allow_rebase_merge\":true,\"allow_squash_merge\":true,\"default_branch\":\"main\"}"},
+ "protected_note": "No protected branch was available to capture. The protected shape used in tests follows the GitHub REST docs (fields required_pull_request_reviews and required_status_checks) and is marked as not from a real run."
+}

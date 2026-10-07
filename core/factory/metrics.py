@@ -16,6 +16,7 @@ from asks import collect, folder
 from common import ACTIVE, STOPPED, config, parse_time, review_independence, unit_row, label, load_unit, paused_until, read_jsonl, read_queue, var
 from consistency import check
 from daily_report import _first, days
+from land import effective_landing
 from tick import backlog
 
 SOURCES = {
@@ -119,6 +120,7 @@ def now_section(root):
             "roles": [{"role": name, **{k: role.get(k, "") for k in ("tool", "model", "effort", "prompt", "form", "check")}}
                       for name, role in config(root)["roles"].items()],
             "review_independence": dict(zip(("kind", "text"), review_independence(config(root)))),
+            "landing": dict(zip(("mode", "why"), effective_landing(root, config(root)))),
             "lanes": config(root)["lanes"], "paused_until": (paused_until(root) or "") and paused_until(root).isoformat(), "moving": sum(u["state"] in ACTIVE for u in units),
             "clock_stale_minutes": config(root)["clock_stale_minutes"]}
 
